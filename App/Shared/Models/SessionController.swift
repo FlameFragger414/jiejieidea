@@ -10,10 +10,10 @@ import WishlistCore
 @MainActor
 final class SessionController: ObservableObject {
   @Published private(set) var phase: AuthenticationPhase = .restoringSession
-  @Published private(set) var profile: UserProfile?
+  @Published private(set) var profile: UserProfile? = nil
   @Published private(set) var magicLink = MagicLinkRequest()
-  @Published private(set) var appleSignInFailure: AuthenticationFailure?
-  @Published private(set) var configurationProblem: ConfigurationError?
+  @Published private(set) var appleSignInFailure: AuthenticationFailure? = nil
+  @Published private(set) var configurationProblem: ConfigurationError? = nil
   @Published var emailField = ""
 
   let appleSignInEnabled: Bool
@@ -73,8 +73,6 @@ final class SessionController: ObservableObject {
 
   var profileService: (any ProfileService)? { profiles }
 
-  var isConfigured: Bool { configurationProblem == nil }
-
   // MARK: - Lifecycle
 
   /// Starts observing authentication changes. Safe to call more than once; later calls are ignored
@@ -88,14 +86,6 @@ final class SessionController: ObservableObject {
         await self.handle(event)
       }
     }
-  }
-
-  func stop() {
-    observationTask?.cancel()
-    observationTask = nil
-    magicLinkTask?.cancel()
-    magicLinkTask = nil
-    profileLoads.cancelAll()
   }
 
   private func handle(_ event: AuthenticationServiceEvent) async {
@@ -194,6 +184,9 @@ final class SessionController: ObservableObject {
   func resetMagicLink() {
     magicLinkTask?.cancel()
     magicLinkTask = nil
+    // The first call clears an in-flight request, the second clears a finished result. Together
+    // they always land on idle so the form cannot be left showing "Sending link…".
+    magicLink.markCancelled()
     magicLink.reset()
   }
 
@@ -212,9 +205,20 @@ final class SessionController: ObservableObject {
     guard case .authenticationCallback(let callbackURL) = deepLinkParser.parse(url) else {
       return false
     }
-    guard callbackParser.parse(callbackURL) != nil else {
-      appleSignInFailure = nil
-      magicLink.markFailed(.callbackInvalid)
+
+    appleSignInFailure = nil
+    switch callbackParser.parse(callbackURL) {
+    case .authorizationCode:
+      break
+    case .providerFailure(let code):
+      // The provider already reported a failure, so there is nothing to exchange.
+      let failure = AuthenticationErrorMapper.map(errorCode: code)
+      magicLink = MagicLinkRequest(state: .failed(failure))
+      apply(.signInFailed(failure))
+      return true
+    case nil:
+      magicLink = MagicLinkRequest(state: .failed(.callbackInvalid))
+      apply(.signInFailed(.callbackInvalid))
       return true
     }
 

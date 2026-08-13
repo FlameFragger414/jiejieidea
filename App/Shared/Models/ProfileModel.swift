@@ -34,7 +34,7 @@ final class ProfileModel: ObservableObject {
   @Published private(set) var profile: UserProfile
   @Published private(set) var saveState: SaveState = .idle
   @Published private(set) var avatarState: AvatarState = .empty
-  @Published private(set) var fieldIssue: ValidationIssue?
+  @Published private(set) var fieldIssue: ValidationIssue? = nil
   @Published private(set) var deletion = AccountDeletionRequest()
 
   private let service: any ProfileService
@@ -57,12 +57,6 @@ final class ProfileModel: ObservableObject {
     self.onProfileChanged = onProfileChanged
     self.onAccountDeleted = onAccountDeleted
     draft = ProfileDraft(profile: profile)
-  }
-
-  deinit {
-    saveTask?.cancel()
-    avatarTask?.cancel()
-    deletionTask?.cancel()
   }
 
   var canSave: Bool {
@@ -121,14 +115,17 @@ final class ProfileModel: ObservableObject {
 
     avatarTask = Task { [weak self, service, profile] in
       do {
-        let prepared = try ProfileImagePreparation.prepared(data)
+        // Decoding and resizing happen off the main actor so a large photo cannot stall the UI.
+        let prepared = try await Task.detached(priority: .userInitiated) {
+          try ProfileImagePreparation.prepared(data)
+        }.value
         try Task.checkCancellation()
         let upload = try ProfileImageUpload(ownerID: profile.id, data: prepared)
         let updated = try await service.uploadAvatar(upload)
         try Task.checkCancellation()
 
         guard let self, self.avatarLoads.isCurrent(token) else { return }
-        self.apply(updated)
+        self.apply(updated, resettingDraft: false)
         self.avatarState = .ready(prepared)
       } catch is CancellationError {
         guard let self, self.avatarLoads.isCurrent(token) else { return }
@@ -157,7 +154,7 @@ final class ProfileModel: ObservableObject {
       do {
         let updated = try await service.removeAvatar()
         guard let self, self.avatarLoads.isCurrent(token) else { return }
-        self.apply(updated)
+        self.apply(updated, resettingDraft: false)
         self.avatarState = .empty
       } catch {
         guard let self, self.avatarLoads.isCurrent(token) else { return }
@@ -193,7 +190,7 @@ final class ProfileModel: ObservableObject {
         )
         try Task.checkCancellation()
         guard let self else { return }
-        self.apply(updated)
+        self.apply(updated, resettingDraft: true)
         self.saveState = .saved
       } catch is CancellationError {
         self?.saveState = .idle
@@ -211,9 +208,13 @@ final class ProfileModel: ObservableObject {
     saveState = .idle
   }
 
-  private func apply(_ updated: UserProfile) {
+  /// An avatar change must not discard a name the person is still typing, so only a completed save
+  /// refreshes the draft.
+  private func apply(_ updated: UserProfile, resettingDraft: Bool) {
     profile = updated
-    draft = ProfileDraft(profile: updated)
+    if resettingDraft {
+      draft = ProfileDraft(profile: updated)
+    }
     onProfileChanged(updated)
   }
 

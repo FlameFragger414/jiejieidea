@@ -5,7 +5,7 @@ import WishlistCore
 /// recognise, and optionally a photo.
 struct OnboardingView: View {
   @ObservedObject var model: ProfileModel
-  let onSignOut: () async -> Void
+  let onSignOut: @MainActor @Sendable () async -> Void
 
   @FocusState private var nameFieldFocused: Bool
 
@@ -82,7 +82,9 @@ struct OnboardingView: View {
         .giftCard()
 
         Button("Sign out") {
-          Task { await onSignOut() }
+          Task { @MainActor [onSignOut] in
+            await onSignOut()
+          }
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)

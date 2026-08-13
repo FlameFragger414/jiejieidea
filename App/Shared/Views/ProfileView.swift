@@ -5,7 +5,7 @@ import WishlistCore
 struct ProfileView: View {
   @ObservedObject var model: ProfileModel
   let email: String?
-  let onSignOut: () async -> Void
+  let onSignOut: @MainActor @Sendable () async -> Void
 
   @FocusState private var nameFieldFocused: Bool
 
@@ -28,6 +28,13 @@ struct ProfileView: View {
     #endif
     .task {
       await model.loadAvatarIfNeeded()
+    }
+    .task(id: model.saveState) {
+      // Let the "Saved" confirmation fade rather than sit on screen forever.
+      guard model.saveState == .saved else { return }
+      try? await Task.sleep(nanoseconds: 2_500_000_000)
+      guard !Task.isCancelled else { return }
+      model.acknowledgeSaveResult()
     }
     .sheet(isPresented: deletionSheetBinding) {
       AccountDeletionSheet(model: model)
@@ -115,7 +122,9 @@ struct ProfileView: View {
           .accessibilityLabel("Signed in as \(email)")
       }
       Button("Sign out") {
-        Task { await onSignOut() }
+        Task { @MainActor [onSignOut] in
+          await onSignOut()
+        }
       }
       .buttonStyle(.bordered)
       .accessibilityHint("Ends this session on this device")

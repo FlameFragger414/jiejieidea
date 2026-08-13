@@ -32,7 +32,9 @@ struct AuthenticationGate<Content: View>: View {
     }
     .task { session.start() }
     .onOpenURL { url in
-      Task { await session.handle(url: url) }
+      Task { @MainActor [session] in
+        await session.handle(url: url)
+      }
     }
   }
 }
@@ -43,6 +45,7 @@ struct SignedInContentView<Content: View>: View {
   @StateObject private var model: ProfileModel
   @ViewBuilder let content: () -> Content
 
+  @MainActor
   init(
     profile: UserProfile,
     service: any ProfileService,
@@ -63,7 +66,7 @@ struct SignedInContentView<Content: View>: View {
   var body: some View {
     Group {
       if model.profile.requiresOnboarding {
-        OnboardingView(model: model) {
+        OnboardingView(model: model) { [session] in
           await session.signOut()
         }
       } else {
@@ -93,6 +96,7 @@ struct RestoringSessionView: View {
 struct UnverifiedSessionView: View {
   @EnvironmentObject private var session: SessionController
   let problem: SessionVerificationProblem
+  @State private var retryAttempt = 0
   @State private var isRetrying = false
 
   var body: some View {
@@ -109,11 +113,7 @@ struct UnverifiedSessionView: View {
         .frame(maxWidth: 420)
 
       Button {
-        Task {
-          isRetrying = true
-          await session.retryVerification()
-          isRetrying = false
-        }
+        retryAttempt += 1
       } label: {
         HStack(spacing: 8) {
           if isRetrying {
@@ -126,7 +126,9 @@ struct UnverifiedSessionView: View {
       .disabled(isRetrying)
 
       Button("Sign out") {
-        Task { await session.signOut() }
+        Task { @MainActor [session] in
+          await session.signOut()
+        }
       }
       .buttonStyle(.borderless)
       .foregroundStyle(.secondary)
@@ -134,5 +136,11 @@ struct UnverifiedSessionView: View {
     .padding(32)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(GiftPalette.canvas)
+    .task(id: retryAttempt) {
+      guard retryAttempt > 0 else { return }
+      isRetrying = true
+      await session.retryVerification()
+      isRetrying = false
+    }
   }
 }

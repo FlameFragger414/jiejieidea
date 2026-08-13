@@ -2,6 +2,14 @@ import Foundation
 import WishlistCore
 import XCTest
 
+/// Collects the callbacks the model raises, so tests can assert on them without capturing a
+/// mutable local in an escaping closure.
+@MainActor
+private final class ChangeRecorder {
+  var profiles: [UserProfile] = []
+  var accountDeleted = false
+}
+
 @MainActor
 final class ProfileModelTests: XCTestCase {
   private func makeModel(
@@ -76,11 +84,11 @@ final class ProfileModelTests: XCTestCase {
     let service = FakeProfileService(profile: profile)
     service.setSaveResult(.success(TestFixtures.profile(displayName: "Mia Chen")))
 
-    var announced: [UserProfile] = []
+    let recorder = ChangeRecorder()
     let model = makeModel(
       profile: profile,
       service: service,
-      onProfileChanged: { announced.append($0) }
+      onProfileChanged: { recorder.profiles.append($0) }
     )
 
     model.draft.displayName = "  Mia   Chen "
@@ -91,8 +99,8 @@ final class ProfileModelTests: XCTestCase {
     XCTAssertEqual(service.recordedSaves.first?.draft.normalizedDisplayName, "Mia Chen")
     XCTAssertEqual(service.recordedSaves.first?.completingOnboarding, true)
     XCTAssertEqual(model.profile.displayName, "Mia Chen")
-    XCTAssertEqual(announced.count, 1)
-    XCTAssertEqual(announced.first?.onboardingCompleted, true)
+    XCTAssertEqual(recorder.profiles.count, 1)
+    XCTAssertEqual(recorder.profiles.first?.onboardingCompleted, true)
   }
 
   func testEditingLaterDoesNotRepeatOnboarding() async throws {
@@ -257,11 +265,11 @@ final class ProfileModelTests: XCTestCase {
   func testAConfirmedDeletionCallsTheServerAndEndsTheSession() async throws {
     let profile = TestFixtures.profile()
     let service = FakeProfileService(profile: profile)
-    var signedOut = false
+    let recorder = ChangeRecorder()
     let model = makeModel(
       profile: profile,
       service: service,
-      onAccountDeleted: { signedOut = true }
+      onAccountDeleted: { recorder.accountDeleted = true }
     )
 
     model.beginAccountDeletion()
@@ -271,18 +279,18 @@ final class ProfileModelTests: XCTestCase {
 
     try await waitUntil("the deleted state") { model.deletion.state == .deleted }
     XCTAssertEqual(service.recordedDeleteCount, 1)
-    XCTAssertTrue(signedOut)
+    XCTAssertTrue(recorder.accountDeleted)
   }
 
   func testAStaleSessionIsAskedToSignInAgain() async throws {
     let profile = TestFixtures.profile()
     let service = FakeProfileService(profile: profile)
     service.setDeleteResult(.failure(AuthenticationFailure.recentSignInRequired))
-    var signedOut = false
+    let recorder = ChangeRecorder()
     let model = makeModel(
       profile: profile,
       service: service,
-      onAccountDeleted: { signedOut = true }
+      onAccountDeleted: { recorder.accountDeleted = true }
     )
 
     model.beginAccountDeletion()
@@ -291,7 +299,7 @@ final class ProfileModelTests: XCTestCase {
 
     try await waitUntil("the failure state") { model.deletion.state.failure != nil }
     XCTAssertEqual(model.deletion.state.failure, .recentSignInRequired)
-    XCTAssertFalse(signedOut)
+    XCTAssertFalse(recorder.accountDeleted)
   }
 
   func testASecondDeletionRequestWhileRunningIsIgnored() async throws {

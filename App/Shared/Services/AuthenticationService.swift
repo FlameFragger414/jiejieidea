@@ -174,8 +174,13 @@ enum AuthenticationFailureMapping {
       )
     }
 
-    if case FunctionsError.httpError(let code, _) = error {
-      return AuthenticationErrorMapper.map(errorCode: nil, statusCode: code)
+    if let functionsError = error as? FunctionsError {
+      switch functionsError {
+      case .httpError(let code, _):
+        return AuthenticationErrorMapper.map(errorCode: nil, statusCode: code)
+      case .relayError:
+        return .serviceUnavailable
+      }
     }
 
     if let postgrestError = error as? PostgrestError {

@@ -52,7 +52,7 @@ struct ProfileTab: View {
     ProfileView(
       model: profileModel,
       email: session.phase.user?.email
-    ) {
+    ) { [session] in
       await session.signOut()
     }
   }

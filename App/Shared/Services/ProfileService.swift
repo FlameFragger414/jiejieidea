@@ -3,7 +3,7 @@ import Supabase
 import WishlistCore
 
 /// A profile failure that either belongs beside a field or beside the screen.
-enum ProfileServiceError: Error, Equatable {
+enum ProfileServiceError: Error, Equatable, Sendable {
   case validation(ValidationIssue)
   case authentication(AuthenticationFailure)
 
