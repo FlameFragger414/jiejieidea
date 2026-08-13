@@ -34,7 +34,7 @@ Milestones 1–3 and foundation work from milestones 5–7 are complete. The nex
 
 ## Blockers
 
-- Local Apple compilation remains blocked on this Windows host because Xcode and Apple SDKs require macOS. The macOS CI workflow is configured to perform both builds.
+- Local Apple compilation remains unavailable on this Windows host because Xcode and Apple SDKs require macOS. GitHub Actions performs both builds, which pass with Xcode 16.4.
 
 ## Verification status
 
@@ -48,7 +48,7 @@ Milestones 1–3 and foundation work from milestones 5–7 are complete. The nex
 - iOS and macOS source-set parser checks: passed.
 - GitHub workflow `actionlint`: passed.
 - Gitleaks full-history scan: passed with no leaks; one deterministic test-token fixture has a path-and-pattern-scoped allowlist.
-- Full iOS/macOS semantic builds: not run locally; require macOS CI/Xcode.
+- Full iOS/macOS semantic builds: passed in GitHub Actions with Xcode 16.4; not runnable locally on this Windows host.
 
 ## Recommended next task
 
