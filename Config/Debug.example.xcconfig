@@ -1,0 +1,9 @@
+// Copy to Debug.xcconfig and replace placeholders locally.
+// This file is safe to commit because it contains no usable credentials.
+
+APP_BUNDLE_ID = com.example.jiejie.debug
+APP_GROUP_ID = group.com.example.jiejie.debug
+SUPABASE_URL = https:/$()/YOUR_PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
+AUTH_REDIRECT_SCHEME = jiejie-debug
+SHARE_LINK_HOST = example.invalid

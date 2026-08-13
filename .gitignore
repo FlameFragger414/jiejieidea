@@ -1,0 +1,38 @@
+# Apple / Xcode
+.DS_Store
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserstate
+Jiejie.xcodeproj/
+Jiejie.xcworkspace/
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+Package.resolved
+
+# Local app configuration (examples remain tracked)
+Config/Debug.xcconfig
+Config/Release.xcconfig
+*.entitlements.local
+
+# Supabase and Edge Functions
+.supabase/
+supabase/.branches/
+supabase/.temp/
+supabase/functions/.env
+supabase/functions/.env.local
+
+# Tools
+.env
+.env.*
+!.env.example
+node_modules/
+coverage/
+*.log
+
+# Editors
+.idea/
+.vscode/
+*.swp
