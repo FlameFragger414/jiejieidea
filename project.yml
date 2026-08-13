@@ -95,6 +95,28 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
 
+  # Logic tests for the shared services and view models. They compile the shared sources directly
+  # rather than hosting an app, so they run on a macOS runner without signing or a simulator.
+  JiejieTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: App/Shared
+      - path: App/Tests
+    dependencies:
+      - package: WishlistCore
+      - package: Supabase
+        product: Supabase
+    settings:
+      base:
+        PRODUCT_NAME: JiejieTests
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).tests
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    configFiles:
+      Debug: Config/Debug.example.xcconfig
+      Release: Config/Release.example.xcconfig
+
 schemes:
   Jiejie-iOS:
     build:
@@ -108,7 +130,10 @@ schemes:
     build:
       targets:
         Jiejie-macOS: all
+        JiejieTests: [test]
     run:
       config: Debug
     test:
       config: Debug
+      targets:
+        - JiejieTests

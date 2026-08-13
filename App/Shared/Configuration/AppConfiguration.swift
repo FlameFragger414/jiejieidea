@@ -17,17 +17,27 @@ struct AppConfiguration: Equatable, Sendable {
   let appleSignInEnabled: Bool
 
   static func load(bundle: Bundle = .main) throws -> AppConfiguration {
+    try load { key in
+      guard let value = bundle.object(forInfoDictionaryKey: key) as? String else { return nil }
+      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      return trimmed.isEmpty ? nil : trimmed
+    }
+  }
+
+  /// Reads configuration from any source of trimmed, non-empty strings. Tests supply a dictionary
+  /// so the rules can be exercised without a populated `.xcconfig`.
+  static func load(value: (String) -> String?) throws -> AppConfiguration {
     guard
-      let urlText = bundle.string(for: "SUPABASE_URL"),
+      let urlText = value("SUPABASE_URL"),
       let url = URL(string: urlText),
       let scheme = url.scheme?.lowercased(),
       scheme == "https" || url.host == "127.0.0.1",
       !urlText.contains("YOUR_PROJECT_REF"),
-      let key = bundle.string(for: "SUPABASE_PUBLISHABLE_KEY"),
+      let key = value("SUPABASE_PUBLISHABLE_KEY"),
       !key.contains("YOUR_PUBLISHABLE_KEY"),
-      let shareLinkHost = bundle.string(for: "SHARE_LINK_HOST"),
+      let shareLinkHost = value("SHARE_LINK_HOST"),
       shareLinkHost != "example.invalid",
-      let redirectScheme = bundle.string(for: "AUTH_REDIRECT_SCHEME")
+      let redirectScheme = value("AUTH_REDIRECT_SCHEME")
     else {
       throw ConfigurationError.missingLocalConfiguration
     }
@@ -36,12 +46,14 @@ struct AppConfiguration: Equatable, Sendable {
       throw ConfigurationError.invalidRedirectScheme
     }
 
+    let appleFlag = value("APPLE_SIGN_IN_ENABLED")?.lowercased()
+
     return AppConfiguration(
       supabaseURL: url,
       publishableKey: key,
       shareLinkHost: shareLinkHost.lowercased(),
       authRedirectScheme: redirectScheme.lowercased(),
-      appleSignInEnabled: bundle.flag(for: "APPLE_SIGN_IN_ENABLED")
+      appleSignInEnabled: ["yes", "true", "1"].contains(appleFlag ?? "")
     )
   }
 
@@ -71,19 +83,6 @@ enum ConfigurationError: Error, Equatable {
     case .invalidRedirectScheme:
       "AUTH_REDIRECT_SCHEME is not a usable URL scheme."
     }
-  }
-}
-
-extension Bundle {
-  fileprivate func string(for key: String) -> String? {
-    guard let value = object(forInfoDictionaryKey: key) as? String else { return nil }
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
-  }
-
-  fileprivate func flag(for key: String) -> Bool {
-    guard let value = string(for: key)?.lowercased() else { return false }
-    return ["yes", "true", "1"].contains(value)
   }
 }
 
