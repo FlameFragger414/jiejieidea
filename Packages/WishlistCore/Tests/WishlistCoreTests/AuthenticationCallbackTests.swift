@@ -97,7 +97,8 @@ final class AuthenticationCallbackTests: XCTestCase {
   }
 
   func testDeepLinkRouterAgreesWithConfiguredScheme() throws {
-    let router = DeepLinkParser(universalLinkHost: "gifts.example.com", customScheme: "jiejie-debug")
+    let router = DeepLinkParser(
+      universalLinkHost: "gifts.example.com", customScheme: "jiejie-debug")
     let url = try XCTUnwrap(URL(string: "jiejie-debug://auth/callback?code=abcdefgh12345678"))
     XCTAssertEqual(router.parse(url), .authenticationCallback(url))
   }

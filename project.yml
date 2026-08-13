@@ -29,7 +29,7 @@ packages:
     path: Packages/WishlistCore
   Supabase:
     url: https://github.com/supabase/supabase-swift.git
-    from: 2.0.0
+    from: 2.55.0
 
 targetTemplates:
   JiejieApp:
@@ -56,8 +56,10 @@ targetTemplates:
         SUPABASE_URL: $(SUPABASE_URL)
         SUPABASE_PUBLISHABLE_KEY: $(SUPABASE_PUBLISHABLE_KEY)
         SHARE_LINK_HOST: $(SHARE_LINK_HOST)
+        AUTH_REDIRECT_SCHEME: $(AUTH_REDIRECT_SCHEME)
+        APPLE_SIGN_IN_ENABLED: $(APPLE_SIGN_IN_ENABLED)
         CFBundleURLTypes:
-          - CFBundleURLName: com.example.jiejie.auth
+          - CFBundleURLName: $(APP_BUNDLE_ID).auth
             CFBundleURLSchemes:
               - $(AUTH_REDIRECT_SCHEME)
 

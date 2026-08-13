@@ -12,7 +12,8 @@ public struct SignInWithAppleNonce: Equatable, Sendable {
   public let hashed: String
 
   /// Characters Apple accepts in a nonce, and which survive URL and JSON transport unchanged.
-  static let allowedCharacters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._")
+  static let allowedCharacters = Array(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._")
   static let minimumLength = 32
   static let maximumLength = 256
 

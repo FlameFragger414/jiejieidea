@@ -74,7 +74,8 @@ final class ProfileTests: XCTestCase {
 
   func testDraftRejectsEmptyOrWhitespaceOnlyName() {
     XCTAssertEqual(ProfileDraft(displayName: "").validationIssues().first?.field, "displayName")
-    XCTAssertEqual(ProfileDraft(displayName: "   \n").validationIssues().first?.field, "displayName")
+    XCTAssertEqual(
+      ProfileDraft(displayName: "   \n").validationIssues().first?.field, "displayName")
   }
 
   func testDraftRejectsOverlongName() {
