@@ -1,0 +1,12 @@
+// Copy to Release.xcconfig and replace placeholders in the release environment.
+// Do not add service-role or secret keys here.
+
+APP_BUNDLE_ID = com.example.jiejie
+APP_GROUP_ID = group.com.example.jiejie
+SUPABASE_URL = https:/$()/YOUR_PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
+AUTH_REDIRECT_SCHEME = jiejie
+SHARE_LINK_HOST = example.invalid
+
+// Optional local overrides. This file is ignored by Git.
+#include? "Release.xcconfig"
