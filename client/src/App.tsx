@@ -36,14 +36,33 @@ export function App() {
     }
   }
 
+  function sortIdeas(items: Idea[]): Idea[] {
+    return [...items].sort(
+      (a, b) => b.votes - a.votes || b.createdAt.localeCompare(a.createdAt),
+    );
+  }
+
   async function onUpvote(id: string) {
-    await api.upvote(id);
-    await refresh();
+    setIdeas((prev) =>
+      sortIdeas(prev.map((i) => (i.id === id ? { ...i, votes: i.votes + 1 } : i))),
+    );
+    try {
+      await api.upvote(id);
+    } catch (err) {
+      setError((err as Error).message);
+      await refresh();
+    }
   }
 
   async function onDelete(id: string) {
-    await api.remove(id);
-    await refresh();
+    const previous = ideas;
+    setIdeas((prev) => prev.filter((i) => i.id !== id));
+    try {
+      await api.remove(id);
+    } catch (err) {
+      setError((err as Error).message);
+      setIdeas(previous);
+    }
   }
 
   return (
