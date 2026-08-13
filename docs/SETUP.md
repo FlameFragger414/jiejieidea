@@ -34,7 +34,7 @@ Manual values intentionally not invented by this repository:
 
 ```sh
 supabase start
-supabase db reset
+supabase db reset --local
 supabase status
 ```
 
@@ -42,6 +42,13 @@ The reset applies all migrations and development seed data. To run pgTAP tests:
 
 ```sh
 supabase test db
+```
+
+To run the real two-connection final-unit race test:
+
+```sh
+python -m pip install "psycopg[binary]>=3.2,<4"
+python supabase/tests/concurrent_reservation_test.py
 ```
 
 If local email-link testing is enabled, use the local Mailpit URL printed by `supabase status`. Configure Apple auth only with your real developer settings; placeholders cannot complete an OAuth flow.
@@ -69,8 +76,9 @@ Open `Jiejie.xcodeproj` only after generating it. The generated project is ignor
 ```sh
 swift test --package-path Packages/WishlistCore
 deno fmt --check supabase/functions
-supabase db reset
+supabase db reset --local
 supabase test db
+python supabase/tests/concurrent_reservation_test.py
 xcodegen generate
 ```
 

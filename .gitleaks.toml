@@ -1,0 +1,12 @@
+title = "Jiejie Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Deterministic 64-hex share token used only by deep-link parser tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''Packages/WishlistCore/Tests/WishlistCoreTests/DeepLinkTests\.swift''']
+regexTarget = "line"
+regexes = ['''private let token = "[0-9a-f]{64}"''']

@@ -5,9 +5,9 @@ Work proceeds in vertical slices. A slice includes implementation, failure state
 ## MVP
 
 - [x] Establish repository conventions and architecture documents.
-- [ ] Establish Supabase schema, RLS, local configuration, and database tests.
-- [ ] Add shared Swift domain package and validation tests.
-- [ ] Add adaptive iOS/macOS application shells and CI builds.
+- [x] Establish Supabase schema, RLS, local configuration, and database tests.
+- [x] Add shared Swift domain package and validation tests.
+- [x] Add adaptive iOS/macOS application shells and CI build workflows.
 - [ ] Implement Sign in with Apple and email magic links.
 - [ ] Implement profile onboarding, editing, image upload, sign-out, and account deletion.
 - [ ] Implement wishlist create/edit/reorder/archive/delete with realtime refresh.

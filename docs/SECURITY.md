@@ -39,7 +39,7 @@ Apple clients may contain only the Supabase URL and publishable client key. Serv
 
 ## Security verification matrix
 
-The SQL test suite must cover:
+The automated SQL and integration suites cover:
 
 - owner manages only owned wishlists/items;
 - unrelated users cannot read private/link-only content;
@@ -48,7 +48,9 @@ The SQL test suite must cover:
 - owners cannot read reservations for owned wishlists;
 - another gift-giver cannot read identity or notes;
 - expired/revoked share links validate false;
-- concurrent final-unit reservations serialize and only one succeeds.
+- concurrent final-unit reservations serialize and only one succeeds (verified with two independent database connections).
+
+Storage object policies are not marked complete. Buckets are private and unusable by clients until the profile/image vertical slice adds path-scoped policies and denial tests.
 
 ## Responsible changes
 
