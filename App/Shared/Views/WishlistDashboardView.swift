@@ -15,7 +15,7 @@ struct WishlistDashboardView: View {
       case .idle, .loading:
         ProgressView("Unwrapping your wishlists…")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
-      case let .failed(message):
+            case .failed(let message):
         SetupRequiredView(message: message)
       case .loaded where activeWishlists.isEmpty:
         EmptyStateView(

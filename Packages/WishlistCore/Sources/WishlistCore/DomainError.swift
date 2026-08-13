@@ -42,7 +42,7 @@ public enum WishlistError: Error, Equatable, Sendable {
       "This reservation is no longer active."
     case .idempotencyConflict:
       "This request conflicts with an earlier reservation attempt. Refresh before trying again."
-    case let .invalidInput(message):
+        case .invalidInput(let message):
       message
     case .offline:
       "You’re offline. Reservations need a connection before they can be confirmed."
