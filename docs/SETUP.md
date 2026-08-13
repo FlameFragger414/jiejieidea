@@ -48,12 +48,7 @@ If local email-link testing is enabled, use the local Mailpit URL printed by `su
 
 ## 3. Edge Functions
 
-```sh
-deno check supabase/functions/product-metadata/index.ts
-supabase functions serve product-metadata --env-file supabase/functions/.env.local
-```
-
-Create the ignored `.env.local` only for server-side development secrets. The metadata function should not require the service-role key for its initial public-network fetch path.
+Edge Functions are added with the vertical slice that uses them. When present, type-check each function with `deno check` and serve it with an ignored `.env.local` file for server-only development secrets.
 
 ## 4. Generate and test Apple projects
 
@@ -74,7 +69,6 @@ Open `Jiejie.xcodeproj` only after generating it. The generated project is ignor
 ```sh
 swift test --package-path Packages/WishlistCore
 deno fmt --check supabase/functions
-deno check supabase/functions/product-metadata/index.ts
 supabase db reset
 supabase test db
 xcodegen generate
