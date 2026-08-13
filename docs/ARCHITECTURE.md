@@ -23,11 +23,36 @@ iOS NavigationStack / tabs       macOS NavigationSplitView / menus
 
 ### Client
 
-- `Packages/WishlistCore` owns portable domain models, validation, deep-link parsing, availability calculations, and mapped errors.
+- `Packages/WishlistCore` owns portable domain models, validation, deep-link and authentication-callback parsing, the authentication phase reducer, nonce generation and hashing, availability calculations, and mapped errors.
 - `App/Shared` owns presentation models, dependency protocols, reusable SwiftUI screens, design tokens, and app composition.
-- `App/iOS` owns tab/navigation composition and iOS-only share or haptic adapters.
-- `App/macOS` owns split-view composition, commands, window behavior, and macOS-only adapters.
+- `App/iOS` owns tab/navigation composition, the photo-library picker, and iOS-only share or haptic adapters.
+- `App/macOS` owns split-view composition, commands, window behavior, the open-panel picker, and macOS-only adapters.
+- `App/Tests` holds logic tests for the shared services and view models. They compile the shared sources directly and run on a macOS runner without a host app or a simulator.
 - Services use Swift concurrency. Views receive observable state instead of talking to Supabase directly.
+
+## Authentication and profile flow
+
+```text
+SignInView / SignInWithAppleButton
+              |
+       SessionController  ──  AuthenticationStateMachine (pure, tested)
+        |            |
+AuthenticationService  ProfileService
+        |                    |
+   Supabase Auth      PostgREST + Storage + Edge Function
+```
+
+- `SessionController` is the only owner of the authentication phase. Views observe it and never call the SDK.
+- Phase transitions run through `AuthenticationStateMachine`, a value type in `WishlistCore`, so orderings such as a refresh arriving after a sign-out are covered by tests rather than implied by view code.
+- Session persistence belongs to the Supabase SDK. On Apple platforms its default local storage is `KeychainLocalStorage` and token refresh is automatic, so the app adds no second store and keeps no token in presentation state.
+- The PKCE flow is explicit. `AuthenticationCallbackParser` validates a redirect before the SDK sees it: the scheme comes from `AUTH_REDIRECT_SCHEME`, the host must be `auth`, the path must be exactly `callback`, and the authorization code must look like an unreserved token.
+- Sign in with Apple generates a single-use nonce, sends the SHA-256 digest to Apple, and gives the raw value to Supabase for verification. The button is shown only when `APPLE_SIGN_IN_ENABLED` is set, so the email flow works before Apple configuration exists.
+- Profile writes go through security-definer functions. The client never sends an owner ID, and avatar object names are derived from the signed-in user's ID.
+- Account deletion runs in the `delete-account` Edge Function, which is the only place a service-role key exists.
+
+### Shell states
+
+`AuthenticationPhase` has one case per state the shell can be in: restoring a stored session, signed out, a sign-in in progress, signed in but onboarding incomplete, fully onboarded, and "a session may exist but cannot be verified" for the offline case. `AuthenticationGate` maps each to exactly one screen.
 
 ### Backend
 
@@ -54,8 +79,11 @@ Non-sensitive wishlist content may be cached in a later vertical slice. Reservat
 
 The Apple apps use the official Supabase Swift SDK through Swift Package Manager. Domain tests do not import Supabase, SwiftUI, UIKit, or AppKit. XcodeGen keeps project configuration reviewable and reduces project-file merge conflicts.
 
+`WishlistCore` has no external dependencies. SHA-256 uses CryptoKit on Apple platforms, with a portable implementation compiled only where CryptoKit is unavailable so the shared tests still run on Linux CI. Both paths are checked against the published FIPS 180-4 vectors.
+
 ## Architectural decisions pending
 
+- Wishlist persistence. `AppModel` currently reports an honest empty state; sample content is reachable only through the opt-in development mode.
 - Image cache implementation and eviction policy.
 - Universal-link production host and Apple associated-domain setup.
 - Push provider and Edge Function delivery pipeline.
