@@ -1,0 +1,112 @@
+name: Jiejie
+options:
+  minimumXcodeGenVersion: 2.44.1
+  deploymentTarget:
+    iOS: "16.0"
+    macOS: "13.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+
+packages:
+  WishlistCore:
+    path: Packages/WishlistCore
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    from: 2.0.0
+
+targetTemplates:
+  JiejieApp:
+    type: application
+    sources:
+      - path: App/Shared
+    dependencies:
+      - package: WishlistCore
+      - package: Supabase
+        product: Supabase
+    settings:
+      base:
+        PRODUCT_NAME: Jiejie
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    configFiles:
+      Debug: Config/Debug.example.xcconfig
+      Release: Config/Release.example.xcconfig
+    info:
+      path: App/Generated/${target_name}-Info.plist
+      properties:
+        CFBundleDisplayName: Jiejie
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        SUPABASE_URL: $(SUPABASE_URL)
+        SUPABASE_PUBLISHABLE_KEY: $(SUPABASE_PUBLISHABLE_KEY)
+        SHARE_LINK_HOST: $(SHARE_LINK_HOST)
+        CFBundleURLTypes:
+          - CFBundleURLName: com.example.jiejie.auth
+            CFBundleURLSchemes:
+              - $(AUTH_REDIRECT_SCHEME)
+
+targets:
+  Jiejie-iOS:
+    templates:
+      - JiejieApp
+    platform: iOS
+    sources:
+      - path: App/iOS
+      - path: App/Resources/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).ios
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: false
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+
+  Jiejie-macOS:
+    templates:
+      - JiejieApp
+    platform: macOS
+    sources:
+      - path: App/macOS
+      - path: App/Resources/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).macos
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.lifestyle
+        CODE_SIGN_ENTITLEMENTS: App/macOS/Jiejie.entitlements
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+
+schemes:
+  Jiejie-iOS:
+    build:
+      targets:
+        Jiejie-iOS: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+  Jiejie-macOS:
+    build:
+      targets:
+        Jiejie-macOS: all
+    run:
+      config: Debug
+    test:
+      config: Debug

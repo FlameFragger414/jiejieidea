@@ -7,3 +7,6 @@ SUPABASE_URL = https:/$()/YOUR_PROJECT_REF.supabase.co
 SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
 AUTH_REDIRECT_SCHEME = jiejie
 SHARE_LINK_HOST = example.invalid
+
+// Optional local overrides. This file is ignored by Git.
+#include? "Release.xcconfig"

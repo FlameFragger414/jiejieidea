@@ -6,6 +6,7 @@ DerivedData/
 *.xcuserstate
 Jiejie.xcodeproj/
 Jiejie.xcworkspace/
+App/Generated/*-Info.plist
 
 # Swift Package Manager
 .build/
