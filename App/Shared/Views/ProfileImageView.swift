@@ -46,7 +46,7 @@ struct ProfileAvatarView: View {
       "Updating profile photo"
     case .ready:
       "Profile photo"
-    case .empty, .failed:
+    case .empty:
       "No profile photo"
     }
   }

@@ -192,11 +192,28 @@ final class ProfileModelTests: XCTestCase {
 
     model.selectImage(data: try TestFixtures.pngData())
 
-    try await waitUntil("the failed avatar state") {
-      if case .failed = model.avatarState { return true }
-      return false
-    }
+    try await waitUntil("the reported failure") { model.avatarFailureMessage != nil }
     XCTAssertNil(model.profile.avatarPath)
+    XCTAssertEqual(model.avatarState, .empty)
+  }
+
+  func testAFailedReplacementKeepsTheStoredPhotoOnScreen() async throws {
+    let path = "\(TestFixtures.ownerID.uuidString.lowercased())/existing.jpg"
+    let profile = TestFixtures.profile(avatarPath: path)
+    let service = FakeProfileService(profile: profile)
+    let storedImage = try TestFixtures.pngData(width: 4, height: 4)
+    service.setAvatarResult(.success(storedImage))
+    service.setUploadResult(.failure(AuthenticationFailure.offline))
+    let model = makeModel(profile: profile, service: service)
+
+    await model.loadAvatarIfNeeded()
+    XCTAssertEqual(model.avatarState, .ready(storedImage))
+
+    model.selectImage(data: try TestFixtures.pngData())
+
+    try await waitUntil("the reported failure") { model.avatarFailureMessage != nil }
+    XCTAssertEqual(model.avatarState, .ready(storedImage))
+    XCTAssertEqual(model.profile.avatarPath, path)
   }
 
   func testRemovingAnImageClearsTheProfileReference() async throws {
@@ -224,11 +241,8 @@ final class ProfileModelTests: XCTestCase {
 
     await model.loadAvatarIfNeeded()
 
-    if case .failed = model.avatarState {
-      // Expected.
-    } else {
-      XCTFail("Expected a failed avatar state, got \(model.avatarState)")
-    }
+    XCTAssertNotNil(model.avatarFailureMessage)
+    XCTAssertEqual(model.avatarState, .empty)
   }
 
   func testASupersededUploadDoesNotOverwriteTheNewerOne() async throws {

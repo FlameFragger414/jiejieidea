@@ -104,10 +104,13 @@ public enum AuthenticationErrorMapper {
     case "session_not_found", "session_expired", "refresh_token_not_found",
       "refresh_token_already_used":
       return .sessionExpired
-    case "no_authorization":
+    case "no_authorization", "missing_authorization", "invalid_authorization", "invalid_token":
       return .notSignedIn
     case "reauthentication_needed", "recent_sign_in_required":
       return .recentSignInRequired
+    case "server_misconfigured", "storage_cleanup_failed", "account_deletion_failed",
+      "method_not_allowed":
+      return .serviceUnavailable
     case "invalid_credentials", "bad_oauth_state", "bad_oauth_callback":
       return .appleCredentialRejected
     case "request_timeout":

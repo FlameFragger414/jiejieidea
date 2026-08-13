@@ -39,6 +39,10 @@ struct OnboardingView: View {
             FailureNotice(message: issue.message)
           }
 
+          if let message = model.avatarFailureMessage {
+            FailureNotice(message: message)
+          }
+
           VStack(alignment: .leading, spacing: 8) {
             Text("Your name")
               .font(.headline)

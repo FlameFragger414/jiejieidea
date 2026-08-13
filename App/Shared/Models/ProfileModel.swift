@@ -19,7 +19,6 @@ final class ProfileModel: ObservableObject {
     case loading
     case ready(Data)
     case uploading
-    case failed(String)
 
     var isBusy: Bool { self == .loading || self == .uploading }
 
@@ -34,6 +33,8 @@ final class ProfileModel: ObservableObject {
   @Published private(set) var profile: UserProfile
   @Published private(set) var saveState: SaveState = .idle
   @Published private(set) var avatarState: AvatarState = .empty
+  /// Reported separately from `avatarState` so a failed replacement still shows the stored photo.
+  @Published private(set) var avatarFailureMessage: String? = nil
   @Published private(set) var fieldIssue: ValidationIssue? = nil
   @Published private(set) var deletion = AccountDeletionRequest()
 
@@ -41,6 +42,9 @@ final class ProfileModel: ObservableObject {
   private let onProfileChanged: @MainActor (UserProfile) -> Void
   private let onAccountDeleted: @MainActor () async -> Void
 
+  /// The last image successfully shown, kept so an interrupted replacement can put it back rather
+  /// than leaving the person looking at an empty circle while their photo is still stored.
+  private var lastShownImageData: Data?
   private var avatarLoads = AsyncOperationSequence()
   private var saveTask: Task<Void, Never>?
   private var avatarTask: Task<Void, Never>?
@@ -95,20 +99,24 @@ final class ProfileModel: ObservableObject {
 
   private func loadAvatar(path: String) async {
     let token = avatarLoads.start()
+    avatarFailureMessage = nil
     avatarState = .loading
     do {
       let data = try await service.avatarData(path: path)
       guard avatarLoads.isCurrent(token) else { return }
+      lastShownImageData = data
       avatarState = .ready(data)
     } catch {
       guard avatarLoads.isCurrent(token) else { return }
-      avatarState = .failed(ProfileFailureMapping.error(for: error).userMessage)
+      avatarFailureMessage = ProfileFailureMapping.error(for: error).userMessage
+      avatarState = .empty
     }
   }
 
   /// Accepts freshly picked image data, prepares it, uploads it, and records the new path.
   func selectImage(data: Data) {
     fieldIssue = nil
+    avatarFailureMessage = nil
     avatarTask?.cancel()
     let token = avatarLoads.start()
     avatarState = .uploading
@@ -126,6 +134,7 @@ final class ProfileModel: ObservableObject {
 
         guard let self, self.avatarLoads.isCurrent(token) else { return }
         self.apply(updated, resettingDraft: false)
+        self.lastShownImageData = prepared
         self.avatarState = .ready(prepared)
       } catch is CancellationError {
         guard let self, self.avatarLoads.isCurrent(token) else { return }
@@ -138,7 +147,9 @@ final class ProfileModel: ObservableObject {
         guard let self, self.avatarLoads.isCurrent(token) else { return }
         let mapped = ProfileFailureMapping.error(for: error)
         self.fieldIssue = mapped.validationIssue
-        self.avatarState = .failed(mapped.userMessage)
+        self.avatarFailureMessage = mapped.userMessage
+        // The stored photo is unchanged, so it stays on screen beside the failure.
+        self.restoreAvatarStateAfterInterruption()
       }
     }
   }
@@ -146,6 +157,7 @@ final class ProfileModel: ObservableObject {
   func removeImage() {
     guard hasAvatar, !avatarState.isBusy else { return }
     fieldIssue = nil
+    avatarFailureMessage = nil
     avatarTask?.cancel()
     let token = avatarLoads.start()
     avatarState = .uploading
@@ -155,16 +167,18 @@ final class ProfileModel: ObservableObject {
         let updated = try await service.removeAvatar()
         guard let self, self.avatarLoads.isCurrent(token) else { return }
         self.apply(updated, resettingDraft: false)
+        self.lastShownImageData = nil
         self.avatarState = .empty
       } catch {
         guard let self, self.avatarLoads.isCurrent(token) else { return }
-        self.avatarState = .failed(ProfileFailureMapping.error(for: error).userMessage)
+        self.avatarFailureMessage = ProfileFailureMapping.error(for: error).userMessage
+        self.restoreAvatarStateAfterInterruption()
       }
     }
   }
 
   private func restoreAvatarStateAfterInterruption() {
-    if let data = avatarState.imageData {
+    if let data = lastShownImageData {
       avatarState = .ready(data)
     } else {
       avatarState = .empty

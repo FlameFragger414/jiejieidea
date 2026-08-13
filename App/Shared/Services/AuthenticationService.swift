@@ -176,8 +176,13 @@ enum AuthenticationFailureMapping {
 
     if let functionsError = error as? FunctionsError {
       switch functionsError {
-      case .httpError(let code, _):
-        return AuthenticationErrorMapper.map(errorCode: nil, statusCode: code)
+      case .httpError(let code, let data):
+        // Edge Functions report a stable code in the body, which distinguishes a session that is too
+        // old to delete an account from one that has expired, even though both use 403.
+        return AuthenticationErrorMapper.map(
+          errorCode: edgeFunctionErrorCode(in: data),
+          statusCode: code
+        )
       case .relayError:
         return .serviceUnavailable
       }
@@ -192,6 +197,22 @@ enum AuthenticationFailureMapping {
     }
 
     return AuthenticationErrorMapper.map(errorCode: nil)
+  }
+
+  /// Reads `{"error":"<code>"}` from an Edge Function response. Only a short machine-readable code
+  /// is accepted, so no server text can reach the interface.
+  private static func edgeFunctionErrorCode(in data: Data) -> String? {
+    struct EdgeFunctionFailure: Decodable {
+      let error: String
+    }
+
+    guard let decoded = try? JSONDecoder().decode(EdgeFunctionFailure.self, from: data),
+      (1...64).contains(decoded.error.count),
+      decoded.error.allSatisfy({ $0.isASCII && ($0.isLetter || $0 == "_") })
+    else {
+      return nil
+    }
+    return decoded.error
   }
 
   private static func mapped(_ error: URLError) -> AuthenticationFailure {

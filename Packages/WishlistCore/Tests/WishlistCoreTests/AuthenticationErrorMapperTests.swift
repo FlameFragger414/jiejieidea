@@ -48,6 +48,33 @@ final class AuthenticationErrorMapperTests: XCTestCase {
       AuthenticationErrorMapper.map(errorCode: "invalid_credentials"), .appleCredentialRejected)
   }
 
+  func testMapsAccountDeletionEdgeFunctionCodes() {
+    XCTAssertEqual(
+      AuthenticationErrorMapper.map(errorCode: "recent_sign_in_required", statusCode: 403),
+      .recentSignInRequired
+    )
+    XCTAssertEqual(
+      AuthenticationErrorMapper.map(errorCode: "invalid_token", statusCode: 401),
+      .notSignedIn
+    )
+    XCTAssertEqual(
+      AuthenticationErrorMapper.map(errorCode: "missing_authorization", statusCode: 401),
+      .notSignedIn
+    )
+    XCTAssertEqual(
+      AuthenticationErrorMapper.map(errorCode: "storage_cleanup_failed", statusCode: 502),
+      .serviceUnavailable
+    )
+    XCTAssertEqual(
+      AuthenticationErrorMapper.map(errorCode: "account_deletion_failed", statusCode: 502),
+      .serviceUnavailable
+    )
+    XCTAssertEqual(
+      AuthenticationErrorMapper.map(errorCode: "server_misconfigured", statusCode: 500),
+      .serviceUnavailable
+    )
+  }
+
   func testFallsBackToStatusCodeWhenNoErrorCodeIsSupplied() {
     XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: nil, statusCode: 401), .notSignedIn)
     XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: nil, statusCode: 403), .sessionExpired)

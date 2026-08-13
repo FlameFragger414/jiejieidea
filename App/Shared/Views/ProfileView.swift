@@ -53,7 +53,7 @@ struct ProfileView: View {
       if let issue = model.imageIssue {
         FailureNotice(message: issue.message)
       }
-      if case .failed(let message) = model.avatarState {
+      if let message = model.avatarFailureMessage {
         FailureNotice(message: message)
       }
     }
