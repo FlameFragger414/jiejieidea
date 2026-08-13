@@ -1,0 +1,20 @@
+{
+  "name": "jiejieidea",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "api",
+      "command": "npm run dev -w server",
+      "description": "Idea Board API (Express) with live reload on http://localhost:3001"
+    },
+    {
+      "name": "web",
+      "command": "npm run dev -w client",
+      "description": "Idea Board web client (Vite + React) on http://localhost:5173"
+    }
+  ],
+  "ports": [
+    { "name": "api", "port": 3001 },
+    { "name": "web", "port": 5173 }
+  ]
+}

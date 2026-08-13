@@ -1,0 +1,156 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1220;
+  --card: #1a1f36;
+  --accent: #6c8cff;
+  --accent-2: #a06cff;
+  --text: #e7e9f3;
+  --muted: #9aa0bd;
+  --danger: #ff6b81;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 800px at 20% -10%, #26305c 0%, var(--bg) 55%);
+  color: var(--text);
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 20px 80px;
+}
+
+.hero h1 {
+  font-size: 2.6rem;
+  margin: 0 0 8px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero p {
+  color: var(--muted);
+  margin: 0 0 28px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.form input,
+.form textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #10142a;
+  color: var(--text);
+  font-size: 1rem;
+  resize: vertical;
+}
+
+.form input:focus,
+.form textarea:focus {
+  outline: 2px solid var(--accent);
+  border-color: transparent;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.form button {
+  justify-self: start;
+  padding: 11px 20px;
+  color: white;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  font-size: 1rem;
+}
+
+.form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.idea {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.idea-body h3 {
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+}
+
+.idea-body p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.idea-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.vote {
+  background: rgba(108, 140, 255, 0.15);
+  color: var(--accent);
+  padding: 8px 14px;
+}
+
+.vote:hover {
+  background: rgba(108, 140, 255, 0.28);
+}
+
+.delete {
+  background: rgba(255, 107, 129, 0.12);
+  color: var(--danger);
+  padding: 8px 12px;
+}
+
+.delete:hover {
+  background: rgba(255, 107, 129, 0.25);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+  background: rgba(255, 107, 129, 0.1);
+  padding: 10px 14px;
+  border-radius: 10px;
+}
