@@ -1,0 +1,79 @@
+name: Apple builds
+
+on:
+  pull_request:
+    paths:
+      - "App/**"
+      - "Config/**"
+      - "Packages/**"
+      - "project.yml"
+      - ".github/workflows/apple.yml"
+  push:
+    branches:
+      - main
+      - "codex/**"
+    paths:
+      - "App/**"
+      - "Config/**"
+      - "Packages/**"
+      - "project.yml"
+      - ".github/workflows/apple.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: WishlistCore tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+      - name: Run portable Swift tests
+        run: swift test --package-path Packages/WishlistCore
+
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iOS
+            scheme: Jiejie-iOS
+            destination: generic/platform=iOS Simulator
+          - name: macOS
+            scheme: Jiejie-macOS
+            destination: platform=macOS
+    steps:
+      - uses: actions/checkout@v6
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Resolve Swift packages
+        run: >-
+          xcodebuild
+          -project Jiejie.xcodeproj
+          -scheme "${{ matrix.scheme }}"
+          -resolvePackageDependencies
+      - name: Build without signing
+        run: >-
+          xcodebuild
+          -project Jiejie.xcodeproj
+          -scheme "${{ matrix.scheme }}"
+          -configuration Debug
+          -destination "${{ matrix.destination }}"
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          build
