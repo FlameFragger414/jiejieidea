@@ -21,11 +21,15 @@ struct ProfileImagePicker: View {
   #endif
 
   var body: some View {
+    // Capture the title as a local String. PhotosPicker's label closure is Sendable and cannot
+    // read a main-actor-isolated computed property on this view.
+    let pickerTitle = hasExistingImage ? "Replace photo" : "Add a photo"
+
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 12) {
         #if os(iOS)
           PhotosPicker(selection: $selection, matching: .images, photoLibrary: .shared()) {
-            Label(buttonTitle, systemImage: "photo.on.rectangle")
+            Label(pickerTitle, systemImage: "photo.on.rectangle")
           }
           .buttonStyle(.bordered)
           .disabled(isBusy)
@@ -38,7 +42,7 @@ struct ProfileImagePicker: View {
           Button {
             isImporting = true
           } label: {
-            Label(buttonTitle, systemImage: "photo.on.rectangle")
+            Label(pickerTitle, systemImage: "photo.on.rectangle")
           }
           .buttonStyle(.bordered)
           .disabled(isBusy)
@@ -71,10 +75,6 @@ struct ProfileImagePicker: View {
     ) { result in
       handleImport(result)
     }
-  }
-
-  private var buttonTitle: String {
-    hasExistingImage ? "Replace photo" : "Add a photo"
   }
 
   #if os(iOS)

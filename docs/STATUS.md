@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 
 ## Current milestone
 
@@ -49,22 +49,27 @@ compilation and the hosted-project steps below remain outstanding.
 
 Performed on this change:
 
-- `swift test --package-path Packages/WishlistCore`: 134/134 tests passed on Swift 6.1.2 for Linux.
+- `swift test --package-path Packages/WishlistCore`: 135/135 tests passed on Swift 6.1.2 for Linux.
 - `swift format lint --recursive --strict App Packages`: clean.
-- `swiftc -parse` over the iOS, macOS, and test source sets: passed.
+- `swiftc -parse` over the iOS, macOS, and test source sets: passed on an earlier revision of this branch.
 - `xcodegen generate` 2.44.1: passed, including the new `JiejieTests` target.
 - `supabase db reset --local`: both migrations and the seed applied.
 - `supabase db lint --local --level warning`: no findings.
 - `supabase test db`: 75/75 pgTAP assertions passed across two files.
 - `supabase/tests/concurrent_reservation_test.py`: passed with two simultaneous connections.
-- `deno fmt --check`, `deno lint`, `deno check`, and `deno test supabase/functions`: 13/13 Edge Function tests passed.
+- `deno fmt --check`, `deno lint`, `deno check`, and `deno test supabase/functions`: 13/13 Edge Function tests passed. The README table is now aligned so `deno fmt --check` succeeds.
 - `actionlint`: clean.
 - `gitleaks detect --config .gitleaks.toml`: no leaks across full history.
+
+Fixes for the GitHub Actions failures on this branch:
+
+- iOS compile: `ProfileImagePicker` captures the photo-button title as a local `String`, so the Sendable `PhotosPicker` label no longer reads a main-actor-isolated property.
+- `JiejieTests`: `FakeAuthenticationService` creates its event stream in `init`, so emitting immediately after `SessionController.start()` cannot drop the event before the observation `Task` subscribes.
 
 Not performed here, pending GitHub Actions on a macOS runner:
 
 - iOS simulator compilation.
-- macOS compilation.
+- macOS compilation (passed on the previous push).
 - `JiejieTests` execution, which covers `SessionController`, `ProfileModel`, and `AppConfiguration`.
 
 Not performed at all, and not claimable:

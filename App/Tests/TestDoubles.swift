@@ -8,6 +8,10 @@ import WishlistCore
 ///
 /// Recording call counts is what lets the tests assert that a duplicate submission never reaches the
 /// network and that a superseded request is discarded rather than applied.
+///
+/// The event stream is created in `init` rather than lazily in `events()`. `SessionController.start()`
+/// observes the stream from an unstructured `Task`, so a test that emits immediately after `start()`
+/// would otherwise drop the event if the continuation did not exist yet.
 final class FakeAuthenticationService: AuthenticationService, @unchecked Sendable {
   private let lock = NSLock()
   private var storedUser: AuthenticatedUser?
@@ -19,7 +23,21 @@ final class FakeAuthenticationService: AuthenticationService, @unchecked Sendabl
   private var appleResult: Result<AuthenticatedUser, AuthenticationFailure> = .failure(
     .appleCredentialRejected)
   private var signOutResult: Result<Void, AuthenticationFailure> = .success(())
-  private var continuation: AsyncStream<AuthenticationServiceEvent>.Continuation?
+  private let eventStream: AsyncStream<AuthenticationServiceEvent>
+  private let eventContinuation: AsyncStream<AuthenticationServiceEvent>.Continuation
+
+  init() {
+    let stream = AsyncStream.makeStream(
+      of: AuthenticationServiceEvent.self,
+      bufferingPolicy: .unbounded
+    )
+    eventStream = stream.stream
+    eventContinuation = stream.continuation
+  }
+
+  deinit {
+    eventContinuation.finish()
+  }
 
   private var sentAddresses: [EmailAddress] = []
   private var callbackURLs: [URL] = []
@@ -59,7 +77,7 @@ final class FakeAuthenticationService: AuthenticationService, @unchecked Sendabl
   }
 
   func emit(_ event: AuthenticationServiceEvent) {
-    locked { continuation }?.yield(event)
+    eventContinuation.yield(event)
   }
 
   var sentAddressCount: Int { locked { sentAddresses.count } }
@@ -79,9 +97,7 @@ final class FakeAuthenticationService: AuthenticationService, @unchecked Sendabl
   }
 
   func events() -> AsyncStream<AuthenticationServiceEvent> {
-    AsyncStream { continuation in
-      locked { self.continuation = continuation }
-    }
+    eventStream
   }
 
   func sendMagicLink(to address: EmailAddress) async throws {

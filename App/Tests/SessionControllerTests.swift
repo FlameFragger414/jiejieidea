@@ -46,6 +46,19 @@ final class SessionControllerTests: XCTestCase {
     XCTAssertEqual(controller.profile?.id, TestFixtures.ownerID)
   }
 
+  func testARestoredSessionEmittedBeforeObservationStartsIsStillApplied() async throws {
+    let authentication = FakeAuthenticationService()
+    let profiles = FakeProfileService(profile: TestFixtures.profile())
+    let controller = makeController(authentication: authentication, profiles: profiles)
+
+    authentication.emit(.restored(TestFixtures.user))
+    controller.start()
+
+    try await waitUntil("the restored session") {
+      controller.phase == .authenticated(TestFixtures.user)
+    }
+  }
+
   func testRestoringAnIncompleteProfileRequiresOnboarding() async throws {
     let authentication = FakeAuthenticationService()
     let profiles = FakeProfileService(
