@@ -77,7 +77,7 @@ Important hardening:
 Performed locally on this change (Linux, Swift 6.1.2, Supabase CLI 2.114.0, Deno 2.9.5,
 Gitleaks 8.28.0):
 
-- `swift test --package-path Packages/WishlistCore`: 158/158 tests passed.
+- `swift test --package-path Packages/WishlistCore`: 160/160 tests passed.
 - `swift format lint --recursive --strict App Packages`: clean.
 - `supabase db reset --local`: all three migrations and the seed applied.
 - `supabase db lint --local --level warning`: no findings.
