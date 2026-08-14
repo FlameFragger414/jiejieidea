@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - "codex/**"
+      - "cursor/**"
     paths:
       - "supabase/**"
       - ".github/workflows/backend.yml"
@@ -54,17 +55,27 @@ jobs:
         run: python supabase/tests/concurrent_reservation_test.py
       - name: Check Edge Function formatting
         run: deno fmt --check supabase/functions
+      - name: Lint Edge Functions
+        run: deno lint supabase/functions
       - name: Type-check Edge Functions
         shell: bash
         run: |
-          mapfile -d '' functions < <(find supabase/functions -name 'index.ts' -print0)
-          if ((${#functions[@]} == 0)); then
-            echo "No Edge Function entrypoints yet."
+          mapfile -d '' sources < <(find supabase/functions -name '*.ts' -print0)
+          if ((${#sources[@]} == 0)); then
+            echo "No Edge Function sources yet."
             exit 0
           fi
-          for function in "${functions[@]}"; do
-            deno check "$function"
+          for source in "${sources[@]}"; do
+            deno check "$source"
           done
+      - name: Run Edge Function tests
+        shell: bash
+        run: |
+          if ! find supabase/functions -name '*_test.ts' -print -quit | grep -q .; then
+            echo "No Edge Function tests yet."
+            exit 0
+          fi
+          deno test supabase/functions
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup

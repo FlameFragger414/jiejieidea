@@ -2,11 +2,13 @@ import SwiftUI
 
 @main
 struct JiejieMacOSApp: App {
+  @StateObject private var session = SessionController()
   @StateObject private var model = AppModel()
 
   var body: some Scene {
     WindowGroup {
       MacRootView()
+        .environmentObject(session)
         .environmentObject(model)
         .frame(minWidth: 820, minHeight: 560)
     }

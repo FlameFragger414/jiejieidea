@@ -2,6 +2,11 @@ import Combine
 import Foundation
 import WishlistCore
 
+/// Wishlist content for the signed-in person.
+///
+/// Wishlist persistence arrives in the next vertical slice. Until then the model reports an honest
+/// empty state, and the in-memory sample content is only reachable in the explicitly selected
+/// development mode described by `DevelopmentMode`.
 @MainActor
 final class AppModel: ObservableObject {
   enum LoadState: Equatable {
@@ -16,28 +21,25 @@ final class AppModel: ObservableObject {
   @Published private(set) var wishlists: [Wishlist] = []
   @Published private(set) var itemsByWishlist: [UUID: [WishlistItem]] = [:]
 
+  private let usesSampleData: Bool
+
+  init(usesSampleData: Bool = DevelopmentMode.sampleDataEnabled) {
+    self.usesSampleData = usesSampleData
+  }
+
   func load() async {
     guard loadState == .idle else { return }
     loadState = .loading
     await Task.yield()
 
-    #if DEBUG
-      let preview = DevelopmentSampleData.make()
-      wishlists = preview.wishlists
-      itemsByWishlist = preview.itemsByWishlist
+    if usesSampleData {
+      let sample = SampleWishlistData.make()
+      wishlists = sample.wishlists
+      itemsByWishlist = sample.itemsByWishlist
       allowsLocalMutations = true
-      loadState = .loaded
-    #else
-      do {
-        let configuration = try AppConfiguration.load()
-        _ = SupabaseClientFactory.make(configuration: configuration)
-        loadState = .failed(
-          "The secure sign-in flow is the next implementation slice. Use a Debug build for the local UI preview."
-        )
-      } catch {
-        loadState = .failed("Add your local Supabase configuration to run Jiejie.")
-      }
-    #endif
+    }
+
+    loadState = .loaded
   }
 
   func createWishlist(from draft: WishlistDraft) throws {
@@ -54,7 +56,7 @@ final class AppModel: ObservableObject {
       id: UUID(),
       publicSlug: UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(24)
         .description,
-      ownerID: DevelopmentSampleData.ownerID,
+      ownerID: SampleWishlistData.ownerID,
       name: draft.normalizedName,
       description: draft.description,
       type: draft.type,
@@ -91,94 +93,22 @@ final class AppModel: ObservableObject {
   }
 }
 
-private enum DevelopmentSampleData {
-  static let ownerID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
+/// Opt-in development switches.
+///
+/// An ordinary Debug run behaves like a release build. Sample content appears only when the launch
+/// argument `-JiejieSampleData` or the environment variable `JIEJIE_SAMPLE_DATA=1` is set, and in
+/// SwiftUI previews.
+enum DevelopmentMode {
+  static let sampleDataLaunchArgument = "-JiejieSampleData"
 
-  static func make() -> (wishlists: [Wishlist], itemsByWishlist: [UUID: [WishlistItem]]) {
-    let birthdayID = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
-    let ongoingID = UUID(uuidString: "20000000-0000-0000-0000-000000000002")!
-    let now = Date()
-    let calendar = Calendar(identifier: .gregorian)
-    let eventDate = calendar.date(byAdding: .day, value: 45, to: now)
-
-    let birthday = Wishlist(
-      id: birthdayID,
-      publicSlug: "200000000000000000000001",
-      ownerID: ownerID,
-      name: "Thirty & thriving",
-      description: "A few things for a cosy birthday weekend.",
-      type: .birthday,
-      eventDate: eventDate,
-      visibility: .linkOnly,
-      position: 0,
-      createdAt: now,
-      updatedAt: now
-    )
-    let ongoing = Wishlist(
-      id: ongoingID,
-      publicSlug: "200000000000000000000002",
-      ownerID: ownerID,
-      name: "Things I want",
-      description: "An always-on list of considered favourites.",
-      type: .ongoing,
-      visibility: .public,
-      position: 1,
-      createdAt: now,
-      updatedAt: now
-    )
-
-    let birthdayItems = [
-      WishlistItem(
-        id: UUID(uuidString: "40000000-0000-0000-0000-000000000001")!,
-        wishlistID: birthdayID,
-        productName: "Hand-thrown ramen bowls",
-        description: "A pair in the deep ocean glaze.",
-        retailerName: "Sample Ceramics",
-        estimatedPrice: 88,
-        currency: "AUD",
-        desiredQuantity: 2,
-        variant: "Ocean glaze",
-        priority: .high,
-        category: "Home",
-        position: 0,
-        createdAt: now,
-        updatedAt: now
-      ),
-      WishlistItem(
-        id: UUID(uuidString: "40000000-0000-0000-0000-000000000002")!,
-        wishlistID: birthdayID,
-        productName: "Linen picnic blanket",
-        description: "Large enough for four people.",
-        retailerName: "Sample Outdoors",
-        estimatedPrice: 149,
-        currency: "AUD",
-        variant: "Sage stripe",
-        priority: .normal,
-        category: "Outdoors",
-        position: 1,
-        createdAt: now,
-        updatedAt: now
-      ),
-    ]
-    let ongoingItems = [
-      WishlistItem(
-        id: UUID(uuidString: "40000000-0000-0000-0000-000000000003")!,
-        wishlistID: ongoingID,
-        productName: "Compact instant camera",
-        description: "For weekends away; any neutral colour.",
-        retailerName: "Sample Camera Shop",
-        estimatedPrice: 179.95,
-        currency: "AUD",
-        priority: .mustHave,
-        category: "Tech",
-        createdAt: now,
-        updatedAt: now
-      )
-    ]
-
-    return (
-      [birthday, ongoing],
-      [birthdayID: birthdayItems, ongoingID: ongoingItems]
-    )
+  static var sampleDataEnabled: Bool {
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains(sampleDataLaunchArgument) {
+        return true
+      }
+      return ProcessInfo.processInfo.environment["JIEJIE_SAMPLE_DATA"] == "1"
+    #else
+      return false
+    #endif
   }
 }

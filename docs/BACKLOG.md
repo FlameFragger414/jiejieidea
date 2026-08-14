@@ -8,8 +8,8 @@ Work proceeds in vertical slices. A slice includes implementation, failure state
 - [x] Establish Supabase schema, RLS, local configuration, and database tests.
 - [x] Add shared Swift domain package and validation tests.
 - [x] Add adaptive iOS/macOS application shells and CI build workflows.
-- [ ] Implement Sign in with Apple and email magic links.
-- [ ] Implement profile onboarding, editing, image upload, sign-out, and account deletion.
+- [x] Implement Sign in with Apple and email magic links. Apple sign-in is implemented and unit tested but stays hidden until the manual Apple and Supabase configuration is done.
+- [x] Implement profile onboarding, editing, image upload, sign-out, and account deletion. Deletion needs the Edge Function deployed before it can succeed against a hosted project.
 - [ ] Implement wishlist create/edit/reorder/archive/delete with realtime refresh.
 - [ ] Implement item create/edit/reorder/status transitions and URL metadata review.
 - [ ] Implement revocable/expiring share links, selected users, and deep-link routing.

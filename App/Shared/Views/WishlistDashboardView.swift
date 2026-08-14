@@ -21,7 +21,9 @@ struct WishlistDashboardView: View {
         EmptyStateView(
           title: "A fresh sheet of wrapping paper",
           systemImage: "gift",
-          description: "Create a wishlist for an occasion—or keep one going all year.",
+          description: model.allowsLocalMutations
+            ? "Create a wishlist for an occasion—or keep one going all year."
+            : "Creating and sharing wishlists arrives in the next update. Your profile and sign-in are ready now.",
           actionTitle: model.allowsLocalMutations ? "Create a wishlist" : nil,
           action: model.allowsLocalMutations ? { isCreatingWishlist = true } : nil
         )
@@ -84,7 +86,9 @@ struct WishlistDashboardView: View {
     }
     .background(GiftPalette.canvas)
     .safeAreaInset(edge: .top, spacing: 0) {
-      DevelopmentPreviewBanner()
+      if model.allowsLocalMutations {
+        DevelopmentPreviewBanner()
+      }
     }
   }
 }

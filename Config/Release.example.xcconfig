@@ -8,5 +8,9 @@ SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
 AUTH_REDIRECT_SCHEME = jiejie
 SHARE_LINK_HOST = example.invalid
 
+// Set to YES only after adding the Sign In with Apple capability in Xcode and
+// enabling the Apple provider in Supabase. Email links work either way.
+APPLE_SIGN_IN_ENABLED = NO
+
 // Optional local overrides. This file is ignored by Git.
 #include? "Release.xcconfig"
