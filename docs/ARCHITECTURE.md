@@ -79,7 +79,7 @@ Non-sensitive wishlist content may be cached in a later vertical slice. Reservat
 
 The Apple apps use the official Supabase Swift SDK through Swift Package Manager. Domain tests do not import Supabase, SwiftUI, UIKit, or AppKit. XcodeGen keeps project configuration reviewable and reduces project-file merge conflicts.
 
-`WishlistCore` has no external dependencies. SHA-256 uses CryptoKit on Apple platforms, with a portable implementation compiled only where CryptoKit is unavailable so the shared tests still run on Linux CI. Both paths are checked against the published FIPS 180-4 vectors.
+`WishlistCore` has no external dependencies. SHA-256 uses CryptoKit on Apple platforms, with a portable implementation compiled only where CryptoKit is unavailable so the package also builds without it. Both paths are checked against the published FIPS 180-4 vectors. CI runs the package tests on `macos-15` only, so the CryptoKit path is the one CI exercises; the portable path is covered by a local Linux toolchain when one is available.
 
 ## Architectural decisions pending
 

@@ -30,56 +30,71 @@ final class AsyncGate: @unchecked Sendable {
   }
 
   /// Called by a fake service: records that the call started, then suspends it until `open()`.
+  ///
+  /// The lock is only ever taken inside the synchronous helpers below, because `NSLock` cannot be
+  /// used directly from an asynchronous context.
   func arriveAndWait() async {
-    lock.lock()
-    arrivals += 1
-    let reached = arrivals
-    let watchers = arrivalWatchers.filter { $0.threshold <= reached }.map(\.continuation)
-    arrivalWatchers.removeAll { $0.threshold <= reached }
-    let alreadyOpen = isOpen
-    lock.unlock()
-
+    let (watchers, alreadyOpen) = recordArrival()
     for watcher in watchers {
       watcher.resume()
     }
     if alreadyOpen { return }
-
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      lock.lock()
-      if isOpen {
-        lock.unlock()
-        continuation.resume()
-      } else {
-        blocked.append(continuation)
-        lock.unlock()
-      }
-    }
+    await withCheckedContinuation { blockOrResume($0) }
   }
 
   /// Releases everything waiting at the gate, and everything that arrives later.
   func open() {
-    lock.lock()
-    isOpen = true
-    let waiting = blocked
-    blocked.removeAll()
-    lock.unlock()
-
-    for continuation in waiting {
+    for continuation in takeWaiting() {
       continuation.resume()
     }
   }
 
   /// Suspends until at least `count` calls have reached the gate.
   func waitForArrivals(_ count: Int) async {
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      lock.lock()
-      if arrivals >= count {
-        lock.unlock()
-        continuation.resume()
-      } else {
-        arrivalWatchers.append((count, continuation))
-        lock.unlock()
-      }
+    await withCheckedContinuation { watchForArrivals(count, $0) }
+  }
+
+  private func recordArrival() -> ([CheckedContinuation<Void, Never>], Bool) {
+    lock.lock()
+    defer { lock.unlock() }
+    arrivals += 1
+    let reached = arrivals
+    let watchers = arrivalWatchers.filter { $0.threshold <= reached }.map(\.continuation)
+    arrivalWatchers.removeAll { $0.threshold <= reached }
+    return (watchers, isOpen)
+  }
+
+  private func blockOrResume(_ continuation: CheckedContinuation<Void, Never>) {
+    lock.lock()
+    if isOpen {
+      lock.unlock()
+      continuation.resume()
+    } else {
+      blocked.append(continuation)
+      lock.unlock()
+    }
+  }
+
+  private func takeWaiting() -> [CheckedContinuation<Void, Never>] {
+    lock.lock()
+    defer { lock.unlock() }
+    isOpen = true
+    let waiting = blocked
+    blocked.removeAll()
+    return waiting
+  }
+
+  private func watchForArrivals(
+    _ count: Int,
+    _ continuation: CheckedContinuation<Void, Never>
+  ) {
+    lock.lock()
+    if arrivals >= count {
+      lock.unlock()
+      continuation.resume()
+    } else {
+      arrivalWatchers.append((count, continuation))
+      lock.unlock()
     }
   }
 }
