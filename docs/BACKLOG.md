@@ -10,6 +10,8 @@ Work proceeds in vertical slices. A slice includes implementation, failure state
 - [x] Add adaptive iOS/macOS application shells and CI build workflows.
 - [x] Implement Sign in with Apple and email magic links. Apple sign-in is implemented and unit tested but stays hidden until the manual Apple and Supabase configuration is done.
 - [x] Implement profile onboarding, editing, image upload, sign-out, and account deletion. Deletion needs the Edge Function deployed before it can succeed against a hosted project.
+- [x] Harden the authentication and profile slice: session identity, callback parsing, deletion freshness, and complete profile-image cleanup.
+- [ ] Require a genuine reauthentication before account deletion. The current control bounds how stale the last authentication may be, which is not the same as asking the person to prove who they are at the moment of deletion. Reauthenticating through a fresh magic link or Apple assertion, or reading the session creation time from `auth.sessions` rather than `last_sign_in_at`, would close the gap.
 - [ ] Implement wishlist create/edit/reorder/archive/delete with realtime refresh.
 - [ ] Implement item create/edit/reorder/status transitions and URL metadata review.
 - [ ] Implement revocable/expiring share links, selected users, and deep-link routing.

@@ -4,9 +4,11 @@ Last updated: 2026-08-14
 
 ## Current milestone
 
-Authentication and profile onboarding. The slice is implemented end to end. Remaining
-work is hosted-project configuration (Apple Sign In, Auth redirect allow-list, and
-deploying `delete-account`), not further client or schema work for this milestone.
+Authentication and profile onboarding, plus the security hardening of that slice. The
+feature work is implemented end to end and the blocking findings raised against it are
+fixed. Remaining work is hosted-project configuration (Apple Sign In, Auth redirect
+allow-list, and deploying `delete-account`), not further client or schema work for this
+milestone.
 
 ## Completed features
 
@@ -28,6 +30,28 @@ deploying `delete-account`), not further client or schema work for this mileston
 - Account deletion through the `delete-account` Edge Function: JWT verification, identity derived only from the token, recent-session validation, storage cleanup, and cascading auth-user deletion.
 - Sample data no longer loads during an ordinary Debug run. It is reachable only through the `-JiejieSampleData` launch argument or `JIEJIE_SAMPLE_DATA=1`.
 
+## Security hardening of the authentication slice
+
+Blocking fixes:
+
+- Session resurrection and identity mixing. Every identity transition invalidates outstanding work, so a refresh, verification, callback exchange, or profile read that completes after a sign-out is discarded instead of signing somebody back in. A refresh carrying a different user ID drops the previous profile before the new one is read, and the reducer moves to a neutral phase so no profile is ever shown under another identity. Regression tests are gated rather than timed: sign-out during an in-flight profile read, sign-out during an in-flight verification, a late refresh event, a cross-account refresh, and two overlapping operations settling out of order.
+- Authentication callback parsing. The decoded fragment is no longer assigned back to `percentEncodedQuery`, which trapped on ordinary input such as `%20`. Query and fragment are decoded with the same rules and precedence the Supabase Swift SDK uses, so a redirect this parser accepts is one the SDK can complete. Covered by query, fragment, encoded-percent, malformed-escape, duplicate-field, precedence, and seeded fuzz tests.
+- Recent-sign-in validation for account deletion. Only the verified user's `last_sign_in_at` is read, and it fails closed without one. The access token's `iat` is not read at all, so an automatic refresh can no longer make a months-old login look recent. The test that approved that bypass is gone, replaced by one that rejects it.
+- Profile-image cleanup during account deletion. Every owned object is removed, not only the first hundred. Pagination is bounded, folder placeholders are never mistaken for objects, each path is re-checked against the caller's prefix, and any incomplete outcome is reported as a failure with the auth user left in place rather than claimed as a deletion.
+
+Important hardening:
+
+- A new append-only migration forces an existing `profile-images` bucket private with its size and MIME limits, and re-declares the four owner-scoped storage policies idempotently. Neither existing migration is modified.
+- Expired cached sessions and offline launches now behave as documented. The SDK emits the stored session as the initial one, so an offline launch reaches the unverified state instead of the sign-in screen.
+- `bad_jwt` and `invalid_jwt` map to session expiry, so a stale token ends the session instead of leaving signed-in UI that cannot read anything. `validation_failed` no longer blames the email field on screens that have none, and cancellation has a provider-neutral case.
+- The Gitleaks allowlist matches exact fixture literals. Path-scoped entries were removed because a global allowlist with matching paths skips the whole file in Gitleaks 8.x, which hid every future credential in those two files.
+- Image input above 40 MB is refused before decoding, and macOS file reads and their size checks run off the main actor.
+- Public display-name exposure is stated in onboarding, in the profile editor, in `docs/SECURITY.md`, and asserted in pgTAP.
+- A failed Apple nonce generation clears any pending nonce, an unused one expires after five minutes, and a failure to prepare one is reported instead of silently running an unprotected request.
+- A deleted account-deletion request cannot re-enter the deleting state, and the confirmation sheet cannot be dismissed mid-deletion.
+- `AppConfiguration` validates the redirect scheme once and stores the parser, removing the `try!` that could trap on any directly constructed value.
+- Dependencies are pinned: `supabase-swift`, the Edge Function JSR specifiers, the Supabase CLI, Deno, Gitleaks, and Xcode. XcodeGen is documented as a deliberate exception.
+
 ## Partially completed features
 
 - Wishlist management is still a shell. The dashboard reports an honest empty state instead of pretending wishlists can be created.
@@ -39,9 +63,10 @@ deploying `delete-account`), not further client or schema work for this mileston
 ## Known issues and risks
 
 - Sign in with Apple has never been exercised against Apple's servers. The flow is implemented and unit tested, but it cannot be marked verified until the manual Apple Developer and Supabase provider steps in `docs/SETUP.md` are complete and someone signs in on a device.
-- The `delete-account` Edge Function has not been deployed or invoked against a real project. Its request rules are unit tested; the deletion itself is not integration tested.
-- Recent-session validation for deletion uses a 24-hour window on the recorded sign-in or token issue time. It blocks an abandoned session but is not a re-authentication challenge.
+- The `delete-account` Edge Function has not been deployed or invoked against a real project. Its request rules and its storage-cleanup loop are unit tested against an in-memory storage double; the deletion itself is not integration tested, so the pagination fix is proven by unit tests rather than against a real bucket holding more than 100 objects.
+- Recent-session validation for deletion bounds `last_sign_in_at` to a 24-hour window. It blocks an abandoned session and no longer accepts a refreshed token's issue time, but it is still not a reauthentication challenge: a device holding a valid session inside the window can delete the account without proving who is holding it. Some GoTrue versions also update `last_sign_in_at` when a legacy refresh token is rotated, so the window is a staleness bound rather than proof of recent human authentication.
 - Replaced profile images are deleted by the client after the database reports the previous path. A client that dies between the two steps leaves an unreferenced private object that only its owner can read.
+- The session identity work is verified through `SessionController` and the reducer. The SwiftUI wiring that keys the signed-in shell by account, and that forwards a re-read profile into the profile model, is reviewed rather than covered by a UI test.
 - No production Apple identifiers, team, redirect URLs, associated domains, or credentials have been configured.
 - `wishlist-images` is still private with no policy, so it remains unusable by clients.
 - Local Apple compilation is unavailable on Linux. iOS and macOS compilation and the
@@ -49,25 +74,25 @@ deploying `delete-account`), not further client or schema work for this mileston
 
 ## Verification status
 
-Performed on this change:
+Performed locally on this change (Linux, Swift 6.1.2, Supabase CLI 2.114.0, Deno 2.9.5,
+Gitleaks 8.28.0):
 
-- `swift test --package-path Packages/WishlistCore`: 135/135 tests passed on Swift 6.1.2 for Linux.
+- `swift test --package-path Packages/WishlistCore`: 158/158 tests passed.
 - `swift format lint --recursive --strict App Packages`: clean.
-- `xcodegen generate` 2.44.1: passed, including the new `JiejieTests` target.
-- `supabase db reset --local`: both migrations and the seed applied.
+- `supabase db reset --local`: all three migrations and the seed applied.
 - `supabase db lint --local --level warning`: no findings.
-- `supabase test db`: 75/75 pgTAP assertions passed across two files.
+- `supabase test db`: 94/94 pgTAP assertions passed across three files.
 - `supabase/tests/concurrent_reservation_test.py`: passed with two simultaneous connections.
-- `deno fmt --check`, `deno lint`, `deno check`, and `deno test supabase/functions`: 13/13 Edge Function tests passed.
+- `deno fmt --check`, `deno lint`, `deno check` on every `.ts` file, and `deno test supabase/functions`: 23/23 Edge Function tests passed.
 - `actionlint`: clean.
-- `gitleaks detect --config .gitleaks.toml`: no leaks across full history.
+- `gitleaks detect --config .gitleaks.toml`: no leaks across full history. The allowlist was also checked by planting an `sk_live_...` string in each fixture file and confirming both were reported.
 
-GitHub Actions on this branch (`macos-15`, Xcode 16.4), after the Swift 6 isolation and test-stream fixes:
+GitHub Actions on this branch (`macos-15`, Xcode 16.4):
 
 - WishlistCore tests: passed.
 - Build iOS (`Jiejie-iOS`, iOS Simulator, unsigned Debug): passed.
 - Build macOS (`Jiejie-macOS`, unsigned Debug): passed.
-- `JiejieTests` (`SessionController`, `ProfileModel`, `AppConfiguration`): passed.
+- `JiejieTests` (`SessionController`, `ProfileModel`, `AppConfiguration`): 58/58 passed, including the six gated session-lifecycle regressions.
 - Backend verification (reset, lint, pgTAP, concurrency, Deno fmt/lint/check/test): passed.
 - Credential safety scan: passed.
 
@@ -75,8 +100,9 @@ Not performed at all, and not claimable:
 
 - A real Sign in with Apple authorization.
 - A real magic-link round trip through a mail client.
-- A real account deletion against a deployed Edge Function.
-- Any action against the hosted development project, which this change deliberately never touches.
+- A real account deletion against a deployed Edge Function, so the profile-image pagination fix is proven against an in-memory storage double rather than a real bucket with more than 100 objects.
+- Any action against the hosted development project, which this change deliberately never touches. No migration and no Edge Function was deployed.
+- Any manual interaction with the running apps. Apple compilation and the app tests come from GitHub Actions output; nothing was run on a simulator or a device.
 
 ## Manual configuration still required
 
@@ -92,3 +118,6 @@ Implement wishlist create, edit, reorder, archive, and delete against Supabase w
 The authentication and profile slice now provides a signed-in user, a profile, and the service and
 view-model patterns to follow. Doing wishlists next also unblocks the `wishlist-images` bucket
 policies, which mirror the profile-image ones added here.
+
+Before that, or alongside it, the account-deletion reauthentication item in `docs/BACKLOG.md` is the
+one remaining security gap this hardening pass bounded rather than closed.
