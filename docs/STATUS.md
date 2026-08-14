@@ -4,8 +4,9 @@ Last updated: 2026-08-14
 
 ## Current milestone
 
-Authentication and profile onboarding. The slice is implemented end to end; Apple platform
-compilation and the hosted-project steps below remain outstanding.
+Authentication and profile onboarding. The slice is implemented end to end. Remaining
+work is hosted-project configuration (Apple Sign In, Auth redirect allow-list, and
+deploying `delete-account`), not further client or schema work for this milestone.
 
 ## Completed features
 
@@ -43,7 +44,8 @@ compilation and the hosted-project steps below remain outstanding.
 - Replaced profile images are deleted by the client after the database reports the previous path. A client that dies between the two steps leaves an unreferenced private object that only its owner can read.
 - No production Apple identifiers, team, redirect URLs, associated domains, or credentials have been configured.
 - `wishlist-images` is still private with no policy, so it remains unusable by clients.
-- Local Apple compilation is unavailable on Linux, so the iOS and macOS builds and the `JiejieTests` bundle are verified only by GitHub Actions.
+- Local Apple compilation is unavailable on Linux. iOS and macOS compilation and the
+  `JiejieTests` bundle are verified by GitHub Actions on `macos-15` with Xcode 16.4.
 
 ## Verification status
 
@@ -51,26 +53,23 @@ Performed on this change:
 
 - `swift test --package-path Packages/WishlistCore`: 135/135 tests passed on Swift 6.1.2 for Linux.
 - `swift format lint --recursive --strict App Packages`: clean.
-- `swiftc -parse` over the iOS, macOS, and test source sets: passed on an earlier revision of this branch.
 - `xcodegen generate` 2.44.1: passed, including the new `JiejieTests` target.
 - `supabase db reset --local`: both migrations and the seed applied.
 - `supabase db lint --local --level warning`: no findings.
 - `supabase test db`: 75/75 pgTAP assertions passed across two files.
 - `supabase/tests/concurrent_reservation_test.py`: passed with two simultaneous connections.
-- `deno fmt --check`, `deno lint`, `deno check`, and `deno test supabase/functions`: 13/13 Edge Function tests passed. The README table is now aligned so `deno fmt --check` succeeds.
+- `deno fmt --check`, `deno lint`, `deno check`, and `deno test supabase/functions`: 13/13 Edge Function tests passed.
 - `actionlint`: clean.
 - `gitleaks detect --config .gitleaks.toml`: no leaks across full history.
 
-Fixes for the GitHub Actions failures on this branch:
+GitHub Actions on this branch (`macos-15`, Xcode 16.4), after the Swift 6 isolation and test-stream fixes:
 
-- iOS compile: `ProfileImagePicker` captures the photo-button title as a local `String`, so the Sendable `PhotosPicker` label no longer reads a main-actor-isolated property.
-- `JiejieTests`: `FakeAuthenticationService` creates its event stream in `init`, so emitting immediately after `SessionController.start()` cannot drop the event before the observation `Task` subscribes.
-
-Not performed here, pending GitHub Actions on a macOS runner:
-
-- iOS simulator compilation.
-- macOS compilation (passed on the previous push).
-- `JiejieTests` execution, which covers `SessionController`, `ProfileModel`, and `AppConfiguration`.
+- WishlistCore tests: passed.
+- Build iOS (`Jiejie-iOS`, iOS Simulator, unsigned Debug): passed.
+- Build macOS (`Jiejie-macOS`, unsigned Debug): passed.
+- `JiejieTests` (`SessionController`, `ProfileModel`, `AppConfiguration`): passed.
+- Backend verification (reset, lint, pgTAP, concurrency, Deno fmt/lint/check/test): passed.
+- Credential safety scan: passed.
 
 Not performed at all, and not claimable:
 
