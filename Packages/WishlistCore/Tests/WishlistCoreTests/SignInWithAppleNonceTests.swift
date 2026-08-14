@@ -51,6 +51,29 @@ final class SignInWithAppleNonceTests: XCTestCase {
     XCTAssertThrowsError(try SignInWithAppleNonce(length: 512, using: &generator))
   }
 
+  func testAPreparedNonceIsUsableUntilItExpires() {
+    let prepared = Date(timeIntervalSince1970: 1_700_000_000)
+    let validity = SignInWithAppleNonceFreshness.validity
+
+    XCTAssertTrue(
+      SignInWithAppleNonceFreshness.isUsable(preparedAt: prepared, now: prepared))
+    XCTAssertTrue(
+      SignInWithAppleNonceFreshness.isUsable(
+        preparedAt: prepared, now: prepared.addingTimeInterval(validity)))
+    XCTAssertFalse(
+      SignInWithAppleNonceFreshness.isUsable(
+        preparedAt: prepared, now: prepared.addingTimeInterval(validity + 1)))
+  }
+
+  /// A clock that moved backwards makes the age negative. That is refused rather than read as an
+  /// unusually fresh nonce.
+  func testANonceFromTheFutureIsNotUsable() {
+    let prepared = Date(timeIntervalSince1970: 1_700_000_000)
+    XCTAssertFalse(
+      SignInWithAppleNonceFreshness.isUsable(
+        preparedAt: prepared, now: prepared.addingTimeInterval(-1)))
+  }
+
   func testCredentialRequiresAnIdentityToken() throws {
     let nonce = try SignInWithAppleNonce(raw: String(repeating: "b", count: 32))
     XCTAssertThrowsError(try AppleIdentityCredential(identityToken: nil, nonce: nonce)) { error in

@@ -13,9 +13,9 @@
 // Pinned to an exact version so a CI run, a local run, and a deploy all resolve the same client.
 import { createClient } from "jsr:@supabase/supabase-js@2.112.3";
 import {
+  authUserDeletionOutcome,
   bearerToken,
   hasRecentSignIn,
-  isAlreadyDeleted,
   maxSessionAgeSeconds,
   type ProfileImageStorage,
   rejection,
@@ -120,7 +120,7 @@ Deno.serve(async (request: Request) => {
   const { error: deleteError } = await adminClient.auth.admin.deleteUser(
     user.id,
   );
-  if (deleteError && !isAlreadyDeleted(deleteError)) {
+  if (authUserDeletionOutcome(deleteError) === "failed") {
     console.error("delete-account could not delete the auth user");
     return jsonResponse({ error: "account_deletion_failed" }, 502);
   }

@@ -203,14 +203,20 @@ export async function removeOwnedProfileImages(
   return { status: "incomplete", removed };
 }
 
-/**
- * `true` when deleting the auth user failed because the user is already gone.
- *
- * A retry after a partial failure has to be able to finish rather than report a permanent error for
- * work that actually completed.
- */
-export function isAlreadyDeleted(error: unknown): boolean {
+/** `true` when the Auth admin API refused a deletion because the user is already gone. */
+function isAlreadyDeleted(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
-  const status = (error as { status?: unknown }).status;
-  return status === 404;
+  return (error as { status?: unknown }).status === 404;
+}
+
+/**
+ * Decides whether the auth user is gone after `deleteUser` returned `error`.
+ *
+ * A retry that follows a partial failure has to be able to finish, so a user who is already gone
+ * counts as deleted. Every other error is a failure: the account still exists, and reporting
+ * success would tell somebody their data was destroyed when it was not.
+ */
+export function authUserDeletionOutcome(error: unknown): "deleted" | "failed" {
+  if (!error) return "deleted";
+  return isAlreadyDeleted(error) ? "deleted" : "failed";
 }

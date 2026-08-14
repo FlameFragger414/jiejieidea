@@ -14,10 +14,6 @@ enum AppleSignInOutcome: Sendable {
 /// value afterwards. The value is taken exactly once so a replayed credential cannot be verified
 /// against a nonce that was already used.
 final class AppleSignInNonceStore: @unchecked Sendable {
-  /// How long a prepared nonce may sit unused. An authorization the person never completes leaves
-  /// one behind, and pairing a much later credential with it can only produce a confusing failure.
-  static let validity: TimeInterval = 300
-
   private let lock = NSLock()
   private let now: @Sendable () -> Date
   private var pending: (nonce: SignInWithAppleNonce, preparedAt: Date)?
@@ -44,9 +40,14 @@ final class AppleSignInNonceStore: @unchecked Sendable {
     lock.lock()
     let stored = pending
     pending = nil
-    let isFresh = stored.map { now().timeIntervalSince($0.preparedAt) <= Self.validity } ?? false
+    let moment = now()
     lock.unlock()
-    let nonce = isFresh ? stored?.nonce : nil
+
+    // A nonce that has waited too long belongs to an abandoned authorization, not to this one.
+    let nonce = stored.flatMap {
+      SignInWithAppleNonceFreshness.isUsable(preparedAt: $0.preparedAt, now: moment)
+        ? $0.nonce : nil
+    }
 
     switch result {
     case .success(let authorization):
@@ -81,12 +82,6 @@ final class AppleSignInNonceStore: @unchecked Sendable {
     lock.lock()
     pending = nil
     lock.unlock()
-  }
-
-  var hasPendingNonce: Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return pending != nil
   }
 }
 

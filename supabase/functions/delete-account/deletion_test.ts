@@ -1,10 +1,10 @@
 import { assertEquals } from "jsr:@std/assert@1.0.14";
 import {
+  authUserDeletionOutcome,
   bearerToken,
   DEFAULT_MAX_SESSION_AGE_SECONDS,
   deletableObjectPaths,
   hasRecentSignIn,
-  isAlreadyDeleted,
   maxSessionAgeSeconds,
   ownedObjectNames,
   type ProfileImageStorage,
@@ -347,11 +347,16 @@ Deno.test("cleanup gives up after a bounded number of rounds", async () => {
   assertEquals(storage.listCalls.length, 4);
 });
 
-Deno.test("an already deleted auth user is not reported as a failure", () => {
-  assertEquals(isAlreadyDeleted({ status: 404 }), true);
-  assertEquals(isAlreadyDeleted({ status: 500 }), false);
-  assertEquals(isAlreadyDeleted({ message: "boom" }), false);
-  assertEquals(isAlreadyDeleted(null), false);
-  assertEquals(isAlreadyDeleted(undefined), false);
-  assertEquals(isAlreadyDeleted("404"), false);
+Deno.test("deleting the auth user succeeds only when the account is actually gone", () => {
+  // No error, or a user who is already gone, both mean the account no longer exists.
+  assertEquals(authUserDeletionOutcome(null), "deleted");
+  assertEquals(authUserDeletionOutcome(undefined), "deleted");
+  assertEquals(authUserDeletionOutcome({ status: 404 }), "deleted");
+
+  // Everything else leaves the account in place and must be reported as a failure.
+  assertEquals(authUserDeletionOutcome({ status: 500 }), "failed");
+  assertEquals(authUserDeletionOutcome({ status: 403 }), "failed");
+  assertEquals(authUserDeletionOutcome({ message: "boom" }), "failed");
+  assertEquals(authUserDeletionOutcome("404"), "failed");
+  assertEquals(authUserDeletionOutcome(new Error("network")), "failed");
 });
