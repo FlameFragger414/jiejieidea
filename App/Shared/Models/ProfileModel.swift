@@ -72,7 +72,9 @@ final class ProfileModel: ObservableObject {
   }
 
   var canConfirmDeletion: Bool {
-    AccountDeletionConfirmation.matches(deletionConfirmationText) && !deletion.state.isDeleting
+    AccountDeletionConfirmation.matches(deletionConfirmationText)
+      && !deletion.state.isDeleting
+      && deletion.state != .deleted
   }
 
   /// Field-level feedback shown only once the person has typed something.
@@ -220,6 +222,32 @@ final class ProfileModel: ObservableObject {
   func acknowledgeSaveResult() {
     guard !saveState.isSaving else { return }
     saveState = .idle
+  }
+
+  /// Adopts a profile the session re-read, for example after a token refresh.
+  ///
+  /// A save or an avatar upload in flight is the newer intent, so it is left alone. A name the
+  /// person is still typing is kept for the same reason.
+  func adoptSessionProfile(_ updated: UserProfile) {
+    guard updated != profile, updated.id == profile.id else { return }
+    guard !saveState.isSaving, !avatarState.isBusy else { return }
+
+    let draftFollowsStoredProfile = draft == ProfileDraft(profile: profile)
+    let avatarChanged = updated.avatarPath != profile.avatarPath
+    profile = updated
+    if draftFollowsStoredProfile {
+      draft = ProfileDraft(profile: updated)
+    }
+    guard avatarChanged else { return }
+
+    lastShownImageData = nil
+    avatarState = .empty
+    avatarFailureMessage = nil
+    // A new token supersedes the previous download, so a slower one cannot restore the old image.
+    _ = avatarLoads.start()
+    Task { [weak self] in
+      await self?.loadAvatarIfNeeded()
+    }
   }
 
   /// An avatar change must not discard a name the person is still typing, so only a completed save

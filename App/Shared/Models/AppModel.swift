@@ -96,8 +96,8 @@ final class AppModel: ObservableObject {
 /// Opt-in development switches.
 ///
 /// An ordinary Debug run behaves like a release build. Sample content appears only when the launch
-/// argument `-JiejieSampleData` or the environment variable `JIEJIE_SAMPLE_DATA=1` is set, and in
-/// SwiftUI previews.
+/// argument `-JiejieSampleData` or the environment variable `JIEJIE_SAMPLE_DATA=1` is set. A
+/// preview sets neither, so a preview has to pass `AppModel(usesSampleData: true)` itself.
 enum DevelopmentMode {
   static let sampleDataLaunchArgument = "-JiejieSampleData"
 

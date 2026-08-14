@@ -15,9 +15,11 @@ struct OnboardingView: View {
         VStack(spacing: 10) {
           Text("Finish setting up")
             .font(.system(.title, design: .rounded, weight: .bold))
-          Text("Friends see this name when you share a wishlist with them.")
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
+          Text(
+            "This name is shown to anyone you share a wishlist with, and to anyone at all on a wishlist you make public."
+          )
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
         }
         .padding(.top, 12)
         .accessibilityElement(children: .combine)

@@ -140,7 +140,14 @@ struct SignInView: View {
         .accessibilityHidden(true)
 
       SignInWithAppleButton(.signIn) { request in
-        guard let hashedNonce = appleNonceStore.prepare() else { return }
+        guard let hashedNonce = appleNonceStore.prepare() else {
+          // Without a nonce there is no replay protection, so the request must not run. Apple still
+          // presents its sheet, so the failure is reported rather than left as silence.
+          Task { @MainActor [session] in
+            await session.completeAppleSignIn(.failure(.appleCredentialRejected))
+          }
+          return
+        }
         request.requestedScopes = [.fullName, .email]
         request.nonce = hashedNonce
       } onCompletion: { result in

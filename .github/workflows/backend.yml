@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: supabase/setup-cli@v2
         with:
           version: 2.114.0
@@ -37,7 +39,7 @@ jobs:
           python-version: "3.13"
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: "2.9.5"
 
       - name: Start local Supabase
         run: supabase start

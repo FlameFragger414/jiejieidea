@@ -14,24 +14,39 @@ enum AppleSignInOutcome: Sendable {
 /// value afterwards. The value is taken exactly once so a replayed credential cannot be verified
 /// against a nonce that was already used.
 final class AppleSignInNonceStore: @unchecked Sendable {
+  /// How long a prepared nonce may sit unused. An authorization the person never completes leaves
+  /// one behind, and pairing a much later credential with it can only produce a confusing failure.
+  static let validity: TimeInterval = 300
+
   private let lock = NSLock()
-  private var pending: SignInWithAppleNonce?
+  private let now: @Sendable () -> Date
+  private var pending: (nonce: SignInWithAppleNonce, preparedAt: Date)?
+
+  init(now: @escaping @Sendable () -> Date = Date.init) {
+    self.now = now
+  }
 
   /// Generates a nonce and returns the digest to place on the request, or `nil` if generation
   /// failed, in which case the request must not proceed.
   func prepare() -> String? {
-    guard let nonce = try? SignInWithAppleNonce() else { return nil }
+    let generated = try? SignInWithAppleNonce()
     lock.lock()
     defer { lock.unlock() }
-    pending = nonce
-    return nonce.hashed
+    // Cleared first either way, so a failed generation cannot leave an earlier attempt's nonce
+    // available for a later credential to consume.
+    pending = nil
+    guard let generated else { return nil }
+    pending = (generated, now())
+    return generated.hashed
   }
 
   func outcome(for result: Result<ASAuthorization, any Error>) -> AppleSignInOutcome {
     lock.lock()
-    let nonce = pending
+    let stored = pending
     pending = nil
+    let isFresh = stored.map { now().timeIntervalSince($0.preparedAt) <= Self.validity } ?? false
     lock.unlock()
+    let nonce = isFresh ? stored?.nonce : nil
 
     switch result {
     case .success(let authorization):
@@ -66,6 +81,12 @@ final class AppleSignInNonceStore: @unchecked Sendable {
     lock.lock()
     pending = nil
     lock.unlock()
+  }
+
+  var hasPendingNonce: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return pending != nil
   }
 }
 

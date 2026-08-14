@@ -15,6 +15,29 @@ struct AppConfiguration: Equatable, Sendable {
   /// `false` until the Apple Developer capability and the Supabase Apple provider are configured by
   /// hand. The email link flow stays available either way.
   let appleSignInEnabled: Bool
+  /// Built during initialization so the "this scheme is usable" invariant travels with the value
+  /// instead of being re-checked, and re-trapped, at every call site.
+  let callbackParser: AuthenticationCallbackParser
+
+  /// - Throws: `ConfigurationError.invalidRedirectScheme` when the scheme cannot form a callback.
+  init(
+    supabaseURL: URL,
+    publishableKey: String,
+    shareLinkHost: String,
+    authRedirectScheme: String,
+    appleSignInEnabled: Bool
+  ) throws {
+    let normalizedScheme = authRedirectScheme.lowercased()
+    guard let parser = try? AuthenticationCallbackParser(scheme: normalizedScheme) else {
+      throw ConfigurationError.invalidRedirectScheme
+    }
+    self.supabaseURL = supabaseURL
+    self.publishableKey = publishableKey
+    self.shareLinkHost = shareLinkHost.lowercased()
+    self.authRedirectScheme = normalizedScheme
+    self.appleSignInEnabled = appleSignInEnabled
+    callbackParser = parser
+  }
 
   static func load(bundle: Bundle = .main) throws -> AppConfiguration {
     try load { key in
@@ -35,24 +58,22 @@ struct AppConfiguration: Equatable, Sendable {
       !urlText.contains("YOUR_PROJECT_REF"),
       let key = value("SUPABASE_PUBLISHABLE_KEY"),
       !key.contains("YOUR_PUBLISHABLE_KEY"),
-      let shareLinkHost = value("SHARE_LINK_HOST"),
+      // Normalized before the guard so a value such as `Example.Invalid` is recognised as the
+      // placeholder it is rather than being stored as one.
+      let shareLinkHost = value("SHARE_LINK_HOST")?.lowercased(),
       shareLinkHost != "example.invalid",
       let redirectScheme = value("AUTH_REDIRECT_SCHEME")
     else {
       throw ConfigurationError.missingLocalConfiguration
     }
 
-    guard (try? AuthenticationCallbackParser(scheme: redirectScheme)) != nil else {
-      throw ConfigurationError.invalidRedirectScheme
-    }
-
     let appleFlag = value("APPLE_SIGN_IN_ENABLED")?.lowercased()
 
-    return AppConfiguration(
+    return try AppConfiguration(
       supabaseURL: url,
       publishableKey: key,
-      shareLinkHost: shareLinkHost.lowercased(),
-      authRedirectScheme: redirectScheme.lowercased(),
+      shareLinkHost: shareLinkHost,
+      authRedirectScheme: redirectScheme,
       appleSignInEnabled: ["yes", "true", "1"].contains(appleFlag ?? "")
     )
   }
@@ -60,11 +81,6 @@ struct AppConfiguration: Equatable, Sendable {
   /// The redirect that must also be allow-listed in Supabase Auth's URL configuration.
   var authCallbackURL: URL {
     callbackParser.callbackURL
-  }
-
-  var callbackParser: AuthenticationCallbackParser {
-    // `load` rejects schemes this initializer cannot accept.
-    try! AuthenticationCallbackParser(scheme: authRedirectScheme)
   }
 
   var deepLinkParser: DeepLinkParser {
@@ -93,6 +109,12 @@ enum SupabaseClientFactory {
   /// `AuthClient.Configuration.defaultLocalStorage` is `KeychainLocalStorage`, and automatic token
   /// refresh is on by default. Adding another store would duplicate the tokens in a less protected
   /// place, so the app keeps only the Keychain copy the SDK already manages.
+  ///
+  /// `emitLocalSessionAsInitialSession` is on because the app defines an explicit unverified state
+  /// for a session it cannot check. With the SDK default the stored session is refreshed before the
+  /// initial event, so an offline launch reports no session at all and drops the person on the
+  /// sign-in screen. Emitting the cached session instead lets the app's own profile read decide
+  /// between the documented offline and expired outcomes.
   static func make(configuration: AppConfiguration) -> SupabaseClient {
     SupabaseClient(
       supabaseURL: configuration.supabaseURL,
@@ -100,7 +122,8 @@ enum SupabaseClientFactory {
       options: SupabaseClientOptions(
         auth: SupabaseClientOptions.AuthOptions(
           redirectToURL: configuration.authCallbackURL,
-          flowType: .pkce
+          flowType: .pkce,
+          emitLocalSessionAsInitialSession: true
         )
       )
     )

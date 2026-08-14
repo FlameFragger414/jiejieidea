@@ -26,19 +26,6 @@ final class ProfileModelTests: XCTestCase {
     )
   }
 
-  private func waitUntil(
-    _ description: String,
-    timeout: TimeInterval = 5,
-    _ condition: @MainActor () -> Bool
-  ) async throws {
-    let deadline = Date().addingTimeInterval(timeout)
-    while Date() < deadline {
-      if condition() { return }
-      try await Task.sleep(nanoseconds: 5_000_000)
-    }
-    XCTFail("Timed out waiting for \(description)")
-  }
-
   // MARK: - Onboarding and editing
 
   func testOnboardingStartsWithAnEmptyNameWhenOnlyThePlaceholderExists() {

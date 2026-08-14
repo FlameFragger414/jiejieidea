@@ -80,6 +80,9 @@ struct ProfileImagePicker: View {
   #if os(iOS)
     private func load(_ item: PhotosPickerItem) async {
       importFailure = nil
+      // Cleared on every path, so picking the same photo again still changes `selection` and the
+      // picker does not silently do nothing.
+      defer { selection = nil }
       do {
         guard let data = try await item.loadTransferable(type: Data.self) else {
           importFailure = "That photo could not be read. Choose another one."
@@ -89,7 +92,6 @@ struct ProfileImagePicker: View {
       } catch {
         importFailure = "That photo could not be read. Choose another one."
       }
-      selection = nil
     }
   #endif
 
@@ -102,18 +104,49 @@ struct ProfileImagePicker: View {
       return
     }
 
-    // Files chosen through the open panel are outside the app sandbox until access is requested.
-    let needsScopedAccess = url.startAccessingSecurityScopedResource()
-    defer {
-      if needsScopedAccess {
-        url.stopAccessingSecurityScopedResource()
+    Task {
+      // The open panel can return a file on iCloud Drive or a network volume, where reading it can
+      // take seconds and can trigger a download, so the read never happens on the main actor.
+      let outcome = await Task.detached(priority: .userInitiated) {
+        readPickedImage(at: url)
+      }.value
+
+      switch outcome {
+      case .success(let data):
+        onImagePicked(data)
+      case .failure(let message):
+        importFailure = message
       }
     }
-
-    guard let data = try? Data(contentsOf: url) else {
-      importFailure = "That image could not be opened. Choose another one."
-      return
-    }
-    onImagePicked(data)
   }
+}
+
+private enum PickedImageOutcome: Sendable {
+  case success(Data)
+  case failure(String)
+}
+
+/// Reads a file chosen through the open panel, off the main actor.
+private func readPickedImage(at url: URL) -> PickedImageOutcome {
+  // Files chosen through the open panel are outside the app sandbox until access is requested.
+  let needsScopedAccess = url.startAccessingSecurityScopedResource()
+  defer {
+    if needsScopedAccess {
+      url.stopAccessingSecurityScopedResource()
+    }
+  }
+
+  // Refused from the file's recorded size, so an enormous file is never read into memory at all.
+  let recordedSize = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+  if let recordedSize, recordedSize > ProfileImagePreparation.maximumInputByteCount {
+    return .failure("That image file is too large to open. Choose a smaller one.")
+  }
+
+  guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+    return .failure("That image could not be opened. Choose another one.")
+  }
+  guard data.count <= ProfileImagePreparation.maximumInputByteCount else {
+    return .failure("That image file is too large to open. Choose a smaller one.")
+  }
+  return .success(data)
 }

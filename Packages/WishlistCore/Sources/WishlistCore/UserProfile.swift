@@ -142,7 +142,9 @@ public struct ProfileDraft: Equatable, Sendable {
       issues.append(
         ValidationIssue(field: "displayName", message: "Enter the name friends will recognise.")
       )
-    } else if normalized.count > Self.maximumDisplayNameLength {
+    } else if normalized.unicodeScalars.count > Self.maximumDisplayNameLength {
+      // `save_my_profile` measures with `char_length`, which counts code points. Counting grapheme
+      // clusters here would let a name with combining marks pass and then fail server-side.
       issues.append(
         ValidationIssue(
           field: "displayName",

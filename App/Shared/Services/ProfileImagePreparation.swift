@@ -11,10 +11,20 @@ import WishlistCore
 enum ProfileImagePreparation {
   static let maximumPixelDimension = 1_024
   static let compressionQuality = 0.85
+  /// Refused before any decoding starts. `kCGImageSourceCreateThumbnailFromImageAlways` decodes the
+  /// source at full resolution before downscaling, so an unusually large file would otherwise be
+  /// expanded in memory and could end the app on a constrained device.
+  static let maximumInputByteCount = 40 * 1_024 * 1_024
 
   static func prepared(_ data: Data) throws -> Data {
     guard !data.isEmpty else {
       throw ValidationIssue(field: "profileImage", message: "Choose an image to upload.")
+    }
+    guard data.count <= maximumInputByteCount else {
+      throw ValidationIssue(
+        field: "profileImage",
+        message: "That image file is too large to open. Choose a smaller one."
+      )
     }
     guard ProfileImageFormat.detected(in: data) != nil,
       let source = CGImageSourceCreateWithData(data as CFData, nil),

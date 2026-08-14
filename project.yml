@@ -29,7 +29,10 @@ packages:
     path: Packages/WishlistCore
   Supabase:
     url: https://github.com/supabase/supabase-swift.git
-    from: 2.55.0
+    # Pinned exactly. The generated project and its Package.resolved are both ignored, so CI
+    # resolves dependencies from scratch on every run and a range would let the SDK move under a
+    # build nobody changed. Raising this is a deliberate, reviewable edit.
+    exactVersion: 2.55.1
 
 targetTemplates:
   JiejieApp:

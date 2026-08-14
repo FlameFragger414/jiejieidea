@@ -23,7 +23,10 @@ struct AuthenticationGate<Content: View>: View {
           UnverifiedSessionView(problem: problem)
         case .onboardingRequired, .authenticated:
           if let profile = session.profile {
+            // Keyed by account, so a session that switches identity rebuilds the profile state
+            // instead of reusing the previous person's.
             authenticatedContent(profile)
+              .id(profile.id)
           } else {
             RestoringSessionView(isSigningIn: false)
           }
@@ -74,6 +77,12 @@ struct SignedInContentView<Content: View>: View {
       }
     }
     .environmentObject(model)
+    // `@StateObject` builds the model once per view identity, so a profile the session re-read
+    // afterwards has to be forwarded rather than waiting for the view to be recreated.
+    .onChange(of: session.profile) { updated in
+      guard let updated else { return }
+      model.adoptSessionProfile(updated)
+    }
   }
 }
 
