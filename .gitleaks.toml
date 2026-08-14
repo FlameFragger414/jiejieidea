@@ -3,17 +3,28 @@ title = "Jiejie Gitleaks configuration"
 [extend]
 useDefault = true
 
-# Deterministic, non-secret fixtures. Each entry is scoped to one test file and one exact literal
-# shape, so a real credential added to the same file is still reported.
-[allowlist]
-description = "Deterministic non-secret literals used only by tests"
-condition = "AND"
-paths = [
-  '''Packages/WishlistCore/Tests/WishlistCoreTests/DeepLinkTests\.swift''',
-  '''supabase/functions/delete-account/deletion_test\.ts''',
-]
+# Deterministic, non-secret test fixtures.
+#
+# Each entry allows one exact literal and nothing else, so any other credential-shaped string in the
+# same file is still reported. The declaration is part of the pattern, and it is written in the
+# language of the file it belongs to, so neither entry can match the other fixture's file.
+#
+# `paths` is deliberately absent. In Gitleaks 8.x a global allowlist whose `paths` match causes the
+# whole file to be skipped before any rule runs, even with `condition = "AND"`, so scoping these
+# entries by path would hide every future credential added to those two files. Verified against
+# Gitleaks 8.28.0 by planting a `sk_live_...` string in `DeepLinkTests.swift`: with a path-scoped
+# allowlist it went unreported, and with the entries below it was reported.
+
+[[allowlists]]
+description = "The fixed deep-link share token used by DeepLinkTests"
 regexTarget = "line"
 regexes = [
-  '''private let token = "[0-9a-f]{64}"''',
-  '''const validToken = "[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+";''',
+  '''private let token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"''',
+]
+
+[[allowlists]]
+description = "The fixed three-segment JWT used by the Edge Function tests"
+regexTarget = "line"
+regexes = [
+  '''const validToken = "aGVhZGVy\.eyJpYXQiOjE3MDAwMDAwMDB9\.c2lnbmF0dXJl";''',
 ]

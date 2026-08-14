@@ -47,8 +47,26 @@ security-definer function and opens the `profile-images` bucket to its owner onl
   `<auth.uid()>/<uuid>.<jpg|png|heic|webp>`, with no nested folders and no traversal. The four
   `storage.objects` policies and `set_my_profile_avatar` all use it.
 - The migration also inserts the private `profile-images` bucket with a 5 MB limit and a four-entry
-  MIME allow list, so a hosted deployment gets the same bucket from migrations alone. The insert is
-  `on conflict do nothing`, and `supabase db reset` reconciles it with `supabase/config.toml`.
+  MIME allow list, so a hosted deployment gets the same bucket from migrations alone. Its insert is
+  `on conflict do nothing`, which is corrected by `20260814010000` below.
+
+## Profile image bucket hardening
+
+`20260814010000_auth_profile_security_hardening.sql` corrects the bucket declaration.
+
+- `on conflict (id) do nothing` only produces the intended bucket on a database that did not already
+  have one. A project where `profile-images` had been created by hand kept whatever settings it had:
+  possibly public, possibly unlimited, possibly accepting any content type. The new migration uses
+  `on conflict (id) do update` on `public`, `file_size_limit`, and `allowed_mime_types`, so both
+  paths end at the same settings.
+- The four `storage.objects` policies are re-declared with `drop policy if exists` first, so this one
+  file establishes the intended access rules and re-running it is not an error.
+- `private.is_own_profile_image` is unchanged and remains the single definition of a legitimate
+  object name.
+- `supabase/tests/database/003_profile_bucket_hardening.test.sql` covers both paths: it tampers with
+  the bucket inside its transaction and asserts the corrective statement repairs it, asserts the
+  statement is idempotent, and asserts the same statement produces the intended bucket on a database
+  where it does not exist.
 
 `storage.objects` blocks direct `DELETE` with the `protect_objects_delete` trigger unless
 `storage.allow_delete_query` is set. Application deletes go through the Storage API; the pgTAP suite
@@ -57,9 +75,14 @@ sets the flag inside its transaction to exercise the delete policy.
 ## Account deletion
 
 There is no SQL entry point for account deletion. The `delete-account` Edge Function verifies the
-caller's JWT, removes their storage objects, and calls `auth.admin.deleteUser`, which cascades to
-`profiles`, `wishlists`, `wishlist_members`, `gift_reservations`, `notifications`, and
+caller's JWT, removes every storage object they own, and calls `auth.admin.deleteUser`, which
+cascades to `profiles`, `wishlists`, `wishlist_members`, `gift_reservations`, `notifications`, and
 `device_tokens` through the foreign keys declared in the initial migration.
+
+Storage and Auth cannot be changed in one transaction, so the order matters: storage first, the auth
+user only once nothing is known to remain. Cleanup pages from the start of the caller's folder on
+every round, so a retry after a partial failure resumes from whatever is still stored rather than
+from a cursor that deletion has already invalidated.
 
 ## Share links
 
@@ -69,10 +92,11 @@ The database stores a generated link ID and token hash. Application/server code 
 
 Migrations are append-only under `supabase/migrations`. Never edit a migration already applied outside local development. Add a new timestamped migration for behavior changes.
 
-| Migration                                        | Contents                                                              |
-| ------------------------------------------------ | --------------------------------------------------------------------- |
-| `20260813010000_initial_mvp_foundation.sql`      | Enums, tables, RLS, reservation functions. Applied; never edit.       |
-| `20260813020000_profile_onboarding_and_avatars.sql` | Profile write functions, `profile-images` bucket, storage policies. |
+| Migration                                              | Contents                                                                     |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `20260813010000_initial_mvp_foundation.sql`            | Enums, tables, RLS, reservation functions. Applied; never edit.              |
+| `20260813020000_profile_onboarding_and_avatars.sql`    | Profile write functions, `profile-images` bucket, storage policies.          |
+| `20260814010000_auth_profile_security_hardening.sql`   | Forces the `profile-images` bucket private with its size and MIME limits.    |
 
 ## Development data
 

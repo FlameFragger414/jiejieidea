@@ -66,6 +66,11 @@ struct ProfileView: View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Your name")
         .font(.headline)
+      Text(
+        "Shown to anyone you share a wishlist with, and to anyone at all on a wishlist you make public."
+      )
+      .font(.footnote)
+      .foregroundStyle(.secondary)
       TextField("Mia Chen", text: $model.draft.displayName)
         .textFieldStyle(.roundedBorder)
         .focused($nameFieldFocused)
@@ -164,7 +169,9 @@ struct ProfileView: View {
     Binding(
       get: { model.deletion.state == .confirming || model.deletion.state.isDeleting },
       set: { isPresented in
-        if !isPresented {
+        // Only a dismissal from the confirmation step is a cancellation. A sheet that closes
+        // because the deletion finished must not report the deletion as cancelled.
+        if !isPresented, model.deletion.state == .confirming {
           model.cancelAccountDeletion()
         }
       }
@@ -250,6 +257,9 @@ struct AccountDeletionSheet: View {
     }
     .padding(24)
     .frame(minWidth: 340, maxWidth: 520, minHeight: 420)
+    // The server request continues regardless of the sheet, so swiping it away mid-deletion would
+    // hide a destructive operation that is still running.
+    .interactiveDismissDisabled(model.deletion.state.isDeleting)
     .onAppear { confirmationFocused = true }
   }
 }

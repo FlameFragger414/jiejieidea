@@ -57,6 +57,31 @@ final class AccountDeletionTests: XCTestCase {
     XCTAssertEqual(request.state, .deleted)
   }
 
+  /// The deleted state has to be terminal in every direction, or a second server request can be
+  /// issued for an account that is already gone.
+  func testDeletedAccountCannotStartDeletingAgain() {
+    var request = AccountDeletionRequest()
+    request.beginConfirmation()
+    _ = request.submit(confirmationText: "DELETE")
+    request.markDeleted()
+
+    XCTAssertEqual(request.submit(confirmationText: "DELETE"), .alreadyInFlight)
+    XCTAssertEqual(request.state, .deleted)
+    request.cancel()
+    XCTAssertEqual(request.state, .deleted)
+  }
+
+  /// A failure is not terminal: the person must be able to try again.
+  func testAFailedDeletionCanBeRetried() {
+    var request = AccountDeletionRequest()
+    request.beginConfirmation()
+    _ = request.submit(confirmationText: "DELETE")
+    request.markFailed(.serviceUnavailable)
+
+    XCTAssertEqual(request.submit(confirmationText: "DELETE"), .delete)
+    XCTAssertTrue(request.state.isDeleting)
+  }
+
   func testLateCompletionAfterAFailureIsIgnored() {
     var request = AccountDeletionRequest()
     request.beginConfirmation()

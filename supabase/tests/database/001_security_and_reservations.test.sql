@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(34);
 
 select has_table('public', 'profiles', 'profiles table exists');
 select has_table('public', 'gift_reservations', 'gift reservations table exists');
@@ -115,6 +115,23 @@ select is((select count(*) from public.wishlists where id = '72000000-0000-0000-
 reset role;
 set local role anon;
 select is((select count(*) from public.browse_public_wishlists() where public_slug = '720000000000000000000003'), 1::bigint, 'anonymous caller sees only public catalog projection');
+-- Publishing a wishlist publishes the owner's display name with it. That is intentional, and the
+-- onboarding copy says so, so it is pinned here rather than left as an accident of the projection.
+select is(
+  (select owner_display_name from public.browse_public_wishlists() where public_slug = '720000000000000000000003'),
+  'Owner',
+  'a public wishlist exposes its owner display name to anonymous callers'
+);
+select is(
+  (select count(*) from public.browse_public_wishlists() where public_slug in ('720000000000000000000001', '720000000000000000000002')),
+  0::bigint,
+  'a private or link-only wishlist never exposes its owner display name'
+);
+select throws_like(
+  $$select count(*) from public.profiles$$,
+  '%permission denied%',
+  'the profiles table itself stays unreachable to anonymous callers'
+);
 
 reset role;
 select set_config('request.jwt.claim.sub', '71000000-0000-0000-0000-000000000002', true);

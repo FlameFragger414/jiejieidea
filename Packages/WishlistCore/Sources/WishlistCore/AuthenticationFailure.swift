@@ -11,6 +11,8 @@ public enum AuthenticationFailure: Error, Equatable, Sendable {
   case linkExpired
   case callbackInvalid
   case appleSignInCancelled
+  /// A request the person or the system stopped, on any flow rather than Apple sign-in alone.
+  case cancelled
   case appleIdentityTokenMissing
   case appleCredentialRejected
   case appleProviderNotConfigured
@@ -22,9 +24,9 @@ public enum AuthenticationFailure: Error, Equatable, Sendable {
   case serviceUnavailable
   case unknown
 
-  /// `true` when the person deliberately stopped the flow, so the interface stays quiet.
+  /// `true` when the flow was stopped rather than failing, so the interface stays quiet.
   public var isCancellation: Bool {
-    self == .appleSignInCancelled
+    self == .appleSignInCancelled || self == .cancelled
   }
 
   /// `true` when retrying the same request could plausibly succeed.
@@ -51,6 +53,8 @@ public enum AuthenticationFailure: Error, Equatable, Sendable {
       "That sign-in link could not be used. Request a new one."
     case .appleSignInCancelled:
       "Sign in with Apple was cancelled."
+    case .cancelled:
+      "That request was cancelled."
     case .appleIdentityTokenMissing:
       "Apple did not return an identity token. Try again."
     case .appleCredentialRejected:
@@ -87,7 +91,7 @@ public enum AuthenticationErrorMapper {
     if isOffline { return .offline }
 
     switch errorCode?.lowercased() {
-    case "email_address_invalid", "validation_failed":
+    case "email_address_invalid":
       return .invalidEmail
     case "email_address_not_authorized", "email_provider_disabled", "signup_disabled",
       "user_banned":
@@ -96,9 +100,12 @@ public enum AuthenticationErrorMapper {
       return .rateLimited
     case "otp_expired", "flow_state_expired":
       return .linkExpired
-    case "bad_code_verifier", "flow_state_not_found", "bad_json", "bad_jwt", "invalid_jwt",
-      "pkce_grant_code_exchange":
+    case "bad_code_verifier", "flow_state_not_found", "bad_json", "pkce_grant_code_exchange":
       return .callbackInvalid
+    case "bad_jwt", "invalid_jwt":
+      // These arrive on any call made with a stale access token, not only during a callback
+      // exchange, so the honest instruction is to sign in again rather than to request a new link.
+      return .sessionExpired
     case "provider_disabled":
       return .appleProviderNotConfigured
     case "session_not_found", "session_expired", "refresh_token_not_found",

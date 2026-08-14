@@ -4,33 +4,34 @@
  * Identity comes exclusively from the verified access token: the request body is ignored, so a
  * caller cannot name somebody else. Removing the auth user needs the service-role key, which lives
  * only in this function's server-side environment and is never returned to the client.
+ *
+ * The operation cannot be transactional across Storage and Auth, so it is ordered and idempotent
+ * instead: every owned profile image is removed first, and the auth user is deleted only once no
+ * personal data is known to remain. A partial failure is reported as a failure and can be retried.
  */
 
-import { createClient } from "jsr:@supabase/supabase-js@2";
+// Pinned to an exact version so a CI run, a local run, and a deploy all resolve the same client.
+import { createClient } from "jsr:@supabase/supabase-js@2.112.3";
 import {
+  authUserDeletionOutcome,
   bearerToken,
-  decodeUnverifiedPayload,
   hasRecentSignIn,
   maxSessionAgeSeconds,
-  ownedObjectNames,
+  type ProfileImageStorage,
   rejection,
   type RejectionResponse,
+  removeOwnedProfileImages,
 } from "./deletion.ts";
 
 const PROFILE_IMAGE_BUCKET = "profile-images";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// The declared clients are the iOS and macOS apps, which do not send an `Origin` and do not need
+// CORS. No origin is allow-listed, so a web page cannot invoke this destructive endpoint from a
+// browser even if it obtains a token.
+const baseHeaders = { "Content-Type": "application/json" };
 
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: baseHeaders });
 }
 
 function rejected(response: RejectionResponse): Response {
@@ -38,9 +39,6 @@ function rejected(response: RejectionResponse): Response {
 }
 
 Deno.serve(async (request: Request) => {
-  if (request.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
   if (request.method !== "POST") {
     return rejected(rejection("method_not_allowed"));
   }
@@ -78,11 +76,10 @@ Deno.serve(async (request: Request) => {
   }
   const user = userData.user;
 
-  const payload = decodeUnverifiedPayload(token);
-  const issuedAt = typeof payload?.iat === "number" ? payload.iat : null;
+  // Only the sign-in recorded on the verified user counts. The token's own `iat` is not read at
+  // all, because an automatic refresh reissues it without the person authenticating again.
   const recentEnough = hasRecentSignIn({
     lastSignInAt: user.last_sign_in_at ?? null,
-    issuedAt,
     now: new Date(),
     maxAgeSeconds: maxSessionAgeSeconds(
       Deno.env.get("ACCOUNT_DELETION_MAX_SESSION_AGE_SECONDS"),
@@ -98,28 +95,23 @@ Deno.serve(async (request: Request) => {
 
   // Storage objects have no cascading foreign key to auth.users, so they are removed explicitly
   // before the user row disappears and the folder becomes unattributable.
-  const { data: storedObjects, error: listError } = await adminClient.storage
-    .from(PROFILE_IMAGE_BUCKET)
-    .list(user.id, { limit: 100 });
+  // Storage's own type declares a listed object's `id` as non-optional, but the API reports `null`
+  // for a folder placeholder. `StorageListEntry` describes what actually arrives, which is what
+  // lets the cleanup tell an object apart from a folder.
+  const bucket = adminClient.storage.from(PROFILE_IMAGE_BUCKET);
+  const storage: ProfileImageStorage = {
+    list: (prefix, options) => bucket.list(prefix, options),
+    remove: (paths) => bucket.remove(paths),
+  };
 
-  if (listError) {
-    console.error("delete-account could not list stored profile images");
+  const cleanup = await removeOwnedProfileImages(storage, user.id);
+  if (cleanup.status !== "cleaned") {
+    // Personal data is still stored, so the account must not be reported as deleted. The auth user
+    // is left in place: it is what ties the remaining objects to a person who can retry.
+    console.error(
+      `delete-account stopped during profile image cleanup: ${cleanup.status}`,
+    );
     return jsonResponse({ error: "storage_cleanup_failed" }, 502);
-  }
-
-  const objectNames = ownedObjectNames(
-    user.id,
-    (storedObjects ?? []).map((object) => `${user.id}/${object.name}`),
-  );
-
-  if (objectNames.length > 0) {
-    const { error: removeError } = await adminClient.storage
-      .from(PROFILE_IMAGE_BUCKET)
-      .remove(objectNames);
-    if (removeError) {
-      console.error("delete-account could not remove stored profile images");
-      return jsonResponse({ error: "storage_cleanup_failed" }, 502);
-    }
   }
 
   // Deleting the auth user cascades to profiles, wishlists, memberships, reservations, and
@@ -127,7 +119,7 @@ Deno.serve(async (request: Request) => {
   const { error: deleteError } = await adminClient.auth.admin.deleteUser(
     user.id,
   );
-  if (deleteError) {
+  if (authUserDeletionOutcome(deleteError) === "failed") {
     console.error("delete-account could not delete the auth user");
     return jsonResponse({ error: "account_deletion_failed" }, 502);
   }

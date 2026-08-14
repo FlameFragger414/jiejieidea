@@ -65,6 +65,25 @@ public struct SignInWithAppleNonce: Equatable, Sendable {
   }
 }
 
+/// How long a prepared nonce may wait for the authorization it belongs to.
+///
+/// An authorization the person abandons leaves a nonce behind. Pairing a much later credential with
+/// it cannot bypass anything, because the server verifies the digest inside the identity token, but
+/// it does turn a stale attempt into a confusing failure. Expiring the nonce keeps the pairing
+/// bounded to one authorization attempt.
+public enum SignInWithAppleNonceFreshness {
+  public static let validity: TimeInterval = 300
+
+  /// `true` when a nonce prepared at `preparedAt` may still be paired with a credential.
+  ///
+  /// A clock that has moved backwards makes the age negative, which is treated as unusable rather
+  /// than as a very fresh nonce.
+  public static func isUsable(preparedAt: Date, now: Date) -> Bool {
+    let age = now.timeIntervalSince(preparedAt)
+    return age >= 0 && age <= validity
+  }
+}
+
 /// The result of a native Sign in with Apple attempt, reduced to what Supabase needs.
 public struct AppleIdentityCredential: Equatable, Sendable {
   public let identityToken: String

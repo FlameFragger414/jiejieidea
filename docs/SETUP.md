@@ -84,9 +84,16 @@ opened elsewhere cannot complete.
 supabase functions serve delete-account --env-file supabase/functions/.env.local
 deno fmt --check supabase/functions
 deno lint supabase/functions
-deno check supabase/functions/delete-account/index.ts
+find supabase/functions -name '*.ts' -exec deno check {} +
 deno test supabase/functions
 ```
+
+Every `.ts` file is type-checked, which is what CI does. Checking only `index.ts` would leave the
+test sources unchecked, and one of them relies on `deno check` to prove that the account-deletion
+freshness helper no longer accepts a token issue time.
+
+Dependency specifiers in `supabase/functions` are pinned to exact versions, so a local run, a CI run,
+and a deploy all resolve the same code.
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are provided automatically by the
 local stack and by the hosted platform. `supabase/functions/.env.local` is ignored by Git and is only
@@ -167,11 +174,35 @@ supabase test db
 python supabase/tests/concurrent_reservation_test.py
 deno fmt --check supabase/functions
 deno lint supabase/functions
+find supabase/functions -name '*.ts' -exec deno check {} +
 deno test supabase/functions
 gitleaks detect --config .gitleaks.toml
 ```
 
 Then build both Apple schemes in Xcode or let the macOS CI workflow compile simulator targets without code signing.
+
+## 7. Pinned tool and dependency versions
+
+CI and local runs are meant to resolve the same code, so the versions live in the repository rather
+than in whatever a machine happens to have installed.
+
+| Dependency                    | Pin                                             | Where                          |
+| ----------------------------- | ----------------------------------------------- | ------------------------------ |
+| `supabase-swift`              | `exactVersion: 2.55.1`                          | `project.yml`                  |
+| `@supabase/supabase-js` (JSR) | `2.112.3`                                       | `supabase/functions/.../index.ts` |
+| `@std/assert` (JSR)           | `1.0.14`                                        | `supabase/functions/.../deletion_test.ts` |
+| Supabase CLI                  | `2.114.0`                                       | `.github/workflows/backend.yml` |
+| Deno                          | `2.9.5`                                         | `.github/workflows/backend.yml` |
+| Gitleaks                      | `8.28.0` via `GITLEAKS_VERSION`                 | `.github/workflows/secrets.yml` |
+| Xcode                         | `16.4`                                          | `.github/workflows/apple.yml`  |
+| Python                        | `3.13`, with `psycopg[binary]>=3.2,<4`          | `.github/workflows/backend.yml` |
+
+XcodeGen is the exception: CI installs it with `brew install xcodegen`, which Homebrew does not let a
+workflow pin to a version without vendoring a formula. `project.yml` declares
+`minimumXcodeGenVersion: 2.44.1`, so a generation that is too old fails loudly rather than producing
+a subtly different project. Generation output is deterministic for a given `project.yml`, and the
+generated project is not committed, so an XcodeGen upgrade shows up as a build failure rather than as
+a silent change.
 
 ## Troubleshooting
 

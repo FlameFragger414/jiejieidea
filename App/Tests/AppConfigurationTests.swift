@@ -90,6 +90,33 @@ final class AppConfigurationTests: XCTestCase {
     }
   }
 
+  /// The scheme the parser is built from is the normalized one, so the two can never disagree.
+  func testTheRedirectSchemeIsNormalizedBeforeItIsUsed() throws {
+    var values = validValues
+    values["AUTH_REDIRECT_SCHEME"] = "Jiejie-Debug"
+    let configuration = try load(values)
+
+    XCTAssertEqual(configuration.authRedirectScheme, "jiejie-debug")
+    XCTAssertEqual(configuration.authCallbackURL.absoluteString, "jiejie-debug://auth/callback")
+    XCTAssertEqual(configuration.callbackParser.scheme, "jiejie-debug")
+  }
+
+  /// A configuration value cannot be built from a scheme that would later trap when a callback URL
+  /// is derived from it.
+  func testAConfigurationCannotBeBuiltWithAnUnusableScheme() {
+    XCTAssertThrowsError(
+      try AppConfiguration(
+        supabaseURL: URL(string: "https://project.example.invalid")!,
+        publishableKey: "publishable-test-key",
+        shareLinkHost: "gifts.example.invalid",
+        authRedirectScheme: "not a scheme",
+        appleSignInEnabled: false
+      )
+    ) { error in
+      XCTAssertEqual(error as? ConfigurationError, .invalidRedirectScheme)
+    }
+  }
+
   func testTheDeepLinkRouterUsesTheConfiguredSchemeAndHost() throws {
     let parser = try load(validValues).deepLinkParser
 

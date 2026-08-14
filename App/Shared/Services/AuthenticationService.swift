@@ -193,7 +193,9 @@ enum AuthenticationFailureMapping {
     }
 
     if error is CancellationError {
-      return .appleSignInCancelled
+      // This mapping runs for magic links, callbacks, profile reads, and deletion as well, so the
+      // cancellation it reports must not name a provider the request had nothing to do with.
+      return .cancelled
     }
 
     return AuthenticationErrorMapper.map(errorCode: nil)
@@ -223,7 +225,7 @@ enum AuthenticationFailureMapping {
     case .timedOut:
       .timedOut
     case .cancelled:
-      .appleSignInCancelled
+      .cancelled
     default:
       .serviceUnavailable
     }

@@ -15,23 +15,39 @@ enum AppleSignInOutcome: Sendable {
 /// against a nonce that was already used.
 final class AppleSignInNonceStore: @unchecked Sendable {
   private let lock = NSLock()
-  private var pending: SignInWithAppleNonce?
+  private let now: @Sendable () -> Date
+  private var pending: (nonce: SignInWithAppleNonce, preparedAt: Date)?
+
+  init(now: @escaping @Sendable () -> Date = Date.init) {
+    self.now = now
+  }
 
   /// Generates a nonce and returns the digest to place on the request, or `nil` if generation
   /// failed, in which case the request must not proceed.
   func prepare() -> String? {
-    guard let nonce = try? SignInWithAppleNonce() else { return nil }
+    let generated = try? SignInWithAppleNonce()
     lock.lock()
     defer { lock.unlock() }
-    pending = nonce
-    return nonce.hashed
+    // Cleared first either way, so a failed generation cannot leave an earlier attempt's nonce
+    // available for a later credential to consume.
+    pending = nil
+    guard let generated else { return nil }
+    pending = (generated, now())
+    return generated.hashed
   }
 
   func outcome(for result: Result<ASAuthorization, any Error>) -> AppleSignInOutcome {
     lock.lock()
-    let nonce = pending
+    let stored = pending
     pending = nil
+    let moment = now()
     lock.unlock()
+
+    // A nonce that has waited too long belongs to an abandoned authorization, not to this one.
+    let nonce = stored.flatMap {
+      SignInWithAppleNonceFreshness.isUsable(preparedAt: $0.preparedAt, now: moment)
+        ? $0.nonce : nil
+    }
 
     switch result {
     case .success(let authorization):

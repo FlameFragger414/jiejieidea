@@ -18,7 +18,9 @@ public struct EmailAddress: Equatable, Hashable, Sendable {
 
   /// The part after the `@`, useful for showing "check your inbox" copy.
   public var domain: String {
-    String(normalized.split(separator: "@")[1])
+    // `init` guarantees a single `@` with a non-empty domain, but reading the value positionally
+    // would turn a later change to that rule into a crash.
+    normalized.split(separator: "@").last.map(String.init) ?? ""
   }
 
   public static func isValid(_ raw: String) -> Bool {

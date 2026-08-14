@@ -1,9 +1,10 @@
 import Foundation
 import WishlistCore
 
-/// Fictional content for SwiftUI previews and the opt-in development mode.
+/// Fictional content for the opt-in development mode, and for any preview that asks for it.
 ///
-/// It is never loaded during an ordinary run, including Debug runs. See `DevelopmentMode`.
+/// It is never loaded during an ordinary run, including Debug runs, and it is not loaded
+/// automatically in previews either. See `DevelopmentMode`.
 enum SampleWishlistData {
   static let ownerID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
 

@@ -55,7 +55,9 @@ public struct AccountDeletionRequest: Equatable, Sendable {
   }
 
   public mutating func submit(confirmationText: String) -> AccountDeletionSubmission {
-    if state.isDeleting {
+    // A deleted account has nothing left to delete, and re-entering `.deleting` would let the
+    // interface issue a second request against an identity that no longer exists.
+    if state.isDeleting || state == .deleted {
       return .alreadyInFlight
     }
     guard AccountDeletionConfirmation.matches(confirmationText) else {

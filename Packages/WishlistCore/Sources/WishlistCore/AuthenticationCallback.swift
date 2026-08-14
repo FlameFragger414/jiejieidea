@@ -14,32 +14,36 @@ public enum AuthenticationCallback: Equatable, Sendable {
 /// `DeepLinkParser` decides *which* feature a URL belongs to. This parser decides whether an
 /// authentication redirect is well formed enough to act on, so a malformed or unrelated URL is
 /// rejected in one place instead of being trusted by every call site.
-public struct AuthenticationCallbackParser: Sendable {
+public struct AuthenticationCallbackParser: Equatable, Sendable {
   /// The custom URL scheme registered by the running build, for example `jiejie-debug`.
   public let scheme: String
+
+  /// The redirect URL that must also be allow-listed in the Supabase dashboard.
+  public let callbackURL: URL
 
   /// - Throws: `ValidationIssue` when the configured scheme is not a usable URL scheme.
   public init(scheme: String) throws {
     let candidate = scheme.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    guard Self.isValidScheme(candidate) else {
+    guard Self.isValidScheme(candidate),
+      let callbackURL = URL(string: "\(candidate)://auth/callback")
+    else {
       throw ValidationIssue(
         field: "authRedirectScheme",
         message: "Set AUTH_REDIRECT_SCHEME to a valid URL scheme such as jiejie-debug."
       )
     }
     self.scheme = candidate
-  }
-
-  /// The redirect URL that must also be allow-listed in the Supabase dashboard.
-  public var callbackURL: URL {
-    // Force-unwrapping is safe because `init` rejects schemes that cannot form a URL.
-    URL(string: "\(scheme)://auth/callback")!
+    self.callbackURL = callbackURL
   }
 
   /// Returns the callback content, or `nil` when `url` is not a well-formed callback for this build.
   ///
   /// The parser never logs and never returns the raw parameter values for anything other than the
-  /// authorization code, so magic-link secrets are not copied into error paths.
+  /// authorization code, so magic-link secrets are not copied into error paths. Parameter names are
+  /// matched exactly, because the Supabase SDK matches them exactly too.
+  ///
+  /// Any query and fragment content is accepted as input: nothing here can trap, and an unusable
+  /// redirect is reported as `nil` rather than crashing the app that was handed it.
   public func parse(_ url: URL) -> AuthenticationCallback? {
     guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
       components.scheme?.lowercased() == scheme,
@@ -68,18 +72,16 @@ public struct AuthenticationCallbackParser: Sendable {
 
   /// Supabase sends PKCE parameters in the query string and legacy implicit parameters in the
   /// fragment. Both are inspected so an error reported either way is surfaced rather than ignored.
+  ///
+  /// The order matches `extractParams` in Supabase's Swift SDK: the fragment is read first and the
+  /// query overrides it, so a URL this parser accepts is one the SDK can also complete.
   private static func parameters(in components: URLComponents) -> [String: String] {
     var parameters: [String: String] = [:]
 
-    for item in components.queryItems ?? [] where item.value?.isEmpty == false {
-      parameters[item.name.lowercased()] = item.value
-    }
-
-    if let fragment = components.fragment, !fragment.isEmpty {
-      var fragmentComponents = URLComponents()
-      fragmentComponents.percentEncodedQuery = fragment
-      for item in fragmentComponents.queryItems ?? [] where item.value?.isEmpty == false {
-        parameters[item.name.lowercased()] = item.value
+    for source in [components.percentEncodedFragment, components.percentEncodedQuery] {
+      guard let source, !source.isEmpty else { continue }
+      for (name, value) in FormEncodedParameters.parse(source) {
+        parameters[name] = value
       }
     }
 

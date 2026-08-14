@@ -38,6 +38,24 @@ final class AuthenticationErrorMapperTests: XCTestCase {
     XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: "flow_state_expired"), .linkExpired)
   }
 
+  /// A stale access token is reported on any call, so it has to send the person to sign in again
+  /// rather than leaving a signed-in shell that cannot read anything.
+  func testAnUnusableAccessTokenIsReportedAsAnExpiredSession() {
+    XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: "bad_jwt"), .sessionExpired)
+    XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: "invalid_jwt"), .sessionExpired)
+  }
+
+  /// `validation_failed` is a generic request-validation code. Naming the email field for it puts
+  /// an instruction on screens that have no email field.
+  func testAGenericValidationFailureIsNotBlamedOnTheEmailField() {
+    XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: "validation_failed"), .unknown)
+  }
+
+  func testMapsTimeouts() {
+    XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: "request_timeout"), .timedOut)
+    XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: nil, statusCode: 408), .timedOut)
+  }
+
   func testMapsSessionAndAppleFailures() {
     XCTAssertEqual(AuthenticationErrorMapper.map(errorCode: "session_not_found"), .sessionExpired)
     XCTAssertEqual(
@@ -92,7 +110,7 @@ final class AuthenticationErrorMapperTests: XCTestCase {
   func testEveryFailureHasNonEmptyUserSafeCopy() {
     let failures: [AuthenticationFailure] = [
       .invalidEmail, .emailNotAllowed, .rateLimited, .linkExpired, .callbackInvalid,
-      .appleSignInCancelled, .appleIdentityTokenMissing, .appleCredentialRejected,
+      .appleSignInCancelled, .cancelled, .appleIdentityTokenMissing, .appleCredentialRejected,
       .appleProviderNotConfigured, .sessionExpired, .notSignedIn, .recentSignInRequired,
       .offline, .timedOut, .serviceUnavailable, .unknown,
     ]
@@ -107,7 +125,14 @@ final class AuthenticationErrorMapperTests: XCTestCase {
 
   func testOnlyDeliberateCancellationIsTreatedAsCancellation() {
     XCTAssertTrue(AuthenticationFailure.appleSignInCancelled.isCancellation)
+    XCTAssertTrue(AuthenticationFailure.cancelled.isCancellation)
     XCTAssertFalse(AuthenticationFailure.appleCredentialRejected.isCancellation)
+    XCTAssertFalse(AuthenticationFailure.timedOut.isCancellation)
+  }
+
+  /// A cancelled magic-link or profile request must not tell the person Apple sign-in stopped.
+  func testAProviderNeutralCancellationDoesNotNameApple() {
+    XCTAssertFalse(AuthenticationFailure.cancelled.userMessage.lowercased().contains("apple"))
   }
 
   func testRetryableFailuresAreLimitedToTransientProblems() {

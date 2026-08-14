@@ -15,20 +15,6 @@ final class SessionControllerTests: XCTestCase {
     )
   }
 
-  /// Polls on the main actor until `condition` holds, so tests do not depend on a fixed delay.
-  private func waitUntil(
-    _ description: String,
-    timeout: TimeInterval = 5,
-    _ condition: @MainActor () -> Bool
-  ) async throws {
-    let deadline = Date().addingTimeInterval(timeout)
-    while Date() < deadline {
-      if condition() { return }
-      try await Task.sleep(nanoseconds: 5_000_000)
-    }
-    XCTFail("Timed out waiting for \(description)")
-  }
-
   // MARK: - Session restoration
 
   func testRestoringACompleteProfileSignsThePersonIn() async throws {
@@ -333,23 +319,6 @@ final class SessionControllerTests: XCTestCase {
     XCTAssertNil(controller.profile)
   }
 
-  func testAProfileLoadThatFinishesAfterSignOutIsDiscarded() async throws {
-    let authentication = FakeAuthenticationService()
-    let profiles = FakeProfileService(profile: TestFixtures.profile())
-    profiles.setLoadDelay(nanoseconds: 200_000_000)
-    let controller = makeController(authentication: authentication, profiles: profiles)
-
-    controller.start()
-    authentication.emit(.restored(TestFixtures.user))
-    try await waitUntil("the profile read to start") { profiles.recordedLoadCount == 1 }
-
-    await controller.signOut()
-    try await Task.sleep(nanoseconds: 400_000_000)
-
-    XCTAssertEqual(controller.phase, .signedOut)
-    XCTAssertNil(controller.profile)
-  }
-
   func testAnExpiredSessionEventReturnsToSignIn() async throws {
     let authentication = FakeAuthenticationService()
     let profiles = FakeProfileService(profile: TestFixtures.profile())
@@ -377,11 +346,197 @@ final class SessionControllerTests: XCTestCase {
       controller.phase == .authenticated(TestFixtures.user)
     }
 
-    authentication.emit(.refreshed(TestFixtures.user))
-    try await Task.sleep(nanoseconds: 100_000_000)
-
-    XCTAssertEqual(controller.phase, .authenticated(TestFixtures.user))
+    // The refreshed session carries the same account with a re-read address, so observing the new
+    // identity in the phase is a deterministic signal that the refresh was handled.
+    let refreshed = AuthenticatedUser(id: TestFixtures.ownerID, email: "mia.new@example.invalid")
+    authentication.emit(.refreshed(refreshed))
+    try await waitUntil("the refreshed identity") {
+      controller.phase == .authenticated(refreshed)
+    }
     XCTAssertEqual(profiles.recordedLoadCount, 1)
+  }
+
+  // MARK: - Session lifecycle safety
+
+  /// The profile read started before the sign-out completes afterwards. It must be discarded rather
+  /// than authenticating somebody who has already signed out.
+  func testAProfileLoadThatFinishesAfterSignOutNeverSignsThePersonBackIn() async throws {
+    let authentication = FakeAuthenticationService()
+    let profiles = FakeProfileService(profile: TestFixtures.profile())
+    profiles.setLoadResult(.success(TestFixtures.profile()), for: TestFixtures.ownerID)
+    profiles.setLoadResult(.success(TestFixtures.otherProfile()), for: TestFixtures.otherID)
+    let gate = AsyncGate()
+    profiles.setLoadGate(gate)
+    let controller = makeController(authentication: authentication, profiles: profiles)
+    let recorder = PhaseRecorder(controller)
+
+    controller.start()
+    authentication.emit(.restored(TestFixtures.user))
+    await gate.waitForArrivals(1)
+
+    await controller.signOut()
+    XCTAssertEqual(controller.phase, .signedOut)
+
+    // Releasing the read lets the superseded load finish. Events are handled one at a time, so
+    // reaching the second account proves the stale load was processed and dropped first.
+    gate.open()
+    authentication.emit(.signedIn(TestFixtures.otherUser))
+    try await waitUntil("the second account") {
+      controller.phase == .authenticated(TestFixtures.otherUser)
+    }
+
+    XCTAssertEqual(controller.profile?.id, TestFixtures.otherID)
+    XCTAssertEqual(recorder.occurrences(of: .authenticated(TestFixtures.user)), 0)
+  }
+
+  /// The same rule for the refresh the "Try again" button starts.
+  func testAVerificationThatFinishesAfterSignOutNeverSignsThePersonBackIn() async throws {
+    let authentication = FakeAuthenticationService()
+    authentication.setVerifyResult(.success(TestFixtures.user))
+    let verifyGate = AsyncGate()
+    authentication.setVerifyGate(verifyGate)
+    let profiles = FakeProfileService(profile: TestFixtures.profile())
+    let controller = makeController(authentication: authentication, profiles: profiles)
+    let recorder = PhaseRecorder(controller)
+
+    controller.start()
+    authentication.emit(.noSession)
+    try await waitUntil("the signed-out phase") { controller.phase == .signedOut }
+
+    let verification = Task { await controller.retryVerification() }
+    await verifyGate.waitForArrivals(1)
+    await controller.signOut()
+    verifyGate.open()
+    await verification.value
+
+    XCTAssertEqual(controller.phase, .signedOut)
+    XCTAssertNil(controller.profile)
+    XCTAssertEqual(profiles.recordedLoadCount, 0)
+    XCTAssertEqual(recorder.occurrences(of: .authenticated(TestFixtures.user)), 0)
+  }
+
+  func testARefreshEventThatArrivesAfterSignOutIsIgnored() async throws {
+    let authentication = FakeAuthenticationService()
+    let profiles = FakeProfileService(profile: TestFixtures.profile())
+    profiles.setLoadResult(.success(TestFixtures.profile()), for: TestFixtures.ownerID)
+    profiles.setLoadResult(.success(TestFixtures.otherProfile()), for: TestFixtures.otherID)
+    let controller = makeController(authentication: authentication, profiles: profiles)
+    let recorder = PhaseRecorder(controller)
+
+    controller.start()
+    authentication.emit(.restored(TestFixtures.user))
+    try await waitUntil("the restored session") {
+      controller.phase == .authenticated(TestFixtures.user)
+    }
+    await controller.signOut()
+
+    authentication.emit(.refreshed(TestFixtures.user))
+    authentication.emit(.restored(TestFixtures.otherUser))
+    try await waitUntil("the second account") {
+      controller.phase == .authenticated(TestFixtures.otherUser)
+    }
+
+    // The late refresh read no profile at all, so it never had a result to apply.
+    XCTAssertEqual(profiles.recordedLoadedUserIDs, [TestFixtures.ownerID, TestFixtures.otherID])
+    XCTAssertEqual(recorder.occurrences(of: .authenticated(TestFixtures.user)), 1)
+  }
+
+  /// A refreshed session that reports a different account must not keep the previous person's
+  /// profile, and must not show the new account under the previous person's onboarding phase.
+  func testARefreshForADifferentUserNeverKeepsThePreviousProfile() async throws {
+    let authentication = FakeAuthenticationService()
+    let profiles = FakeProfileService(profile: TestFixtures.profile())
+    profiles.setLoadResult(.success(TestFixtures.profile()), for: TestFixtures.ownerID)
+    profiles.setLoadResult(.success(TestFixtures.otherProfile()), for: TestFixtures.otherID)
+    let controller = makeController(authentication: authentication, profiles: profiles)
+    let recorder = PhaseRecorder(controller)
+
+    controller.start()
+    authentication.emit(.restored(TestFixtures.user))
+    try await waitUntil("the restored session") {
+      controller.phase == .authenticated(TestFixtures.user)
+    }
+
+    authentication.emit(.refreshed(TestFixtures.otherUser))
+    try await waitUntil("the refreshed account") {
+      controller.phase == .authenticated(TestFixtures.otherUser)
+    }
+
+    XCTAssertEqual(controller.profile?.id, TestFixtures.otherID)
+    XCTAssertEqual(controller.profile?.displayName, "Leo Marsh")
+    XCTAssertEqual(profiles.recordedLoadedUserIDs, [TestFixtures.ownerID, TestFixtures.otherID])
+    // The neutral phase between the two identities is what stops the first person's profile from
+    // ever being rendered under the second person's session.
+    XCTAssertEqual(
+      recorder.phases,
+      [
+        .restoringSession,
+        .authenticated(TestFixtures.user),
+        .restoringSession,
+        .authenticated(TestFixtures.otherUser),
+      ]
+    )
+  }
+
+  /// A verification and a callback overlap, and the older one settles last.
+  func testOverlappingSessionWorkAppliesOnlyTheNewestIdentity() async throws {
+    let authentication = FakeAuthenticationService()
+    authentication.setVerifyResult(.success(TestFixtures.user))
+    authentication.setCallbackResult(.success(TestFixtures.otherUser))
+    let verifyGate = AsyncGate()
+    authentication.setVerifyGate(verifyGate)
+    let profiles = FakeProfileService(profile: TestFixtures.profile())
+    profiles.setLoadResult(.success(TestFixtures.profile()), for: TestFixtures.ownerID)
+    profiles.setLoadResult(.success(TestFixtures.otherProfile()), for: TestFixtures.otherID)
+    let controller = makeController(authentication: authentication, profiles: profiles)
+
+    let verification = Task { await controller.retryVerification() }
+    await verifyGate.waitForArrivals(1)
+
+    let handled = await controller.handle(
+      url: URL(string: "jiejie-debug://auth/callback?code=abcdefgh12345678")!
+    )
+    XCTAssertTrue(handled)
+    XCTAssertEqual(controller.phase, .authenticated(TestFixtures.otherUser))
+
+    verifyGate.open()
+    await verification.value
+
+    XCTAssertEqual(controller.phase, .authenticated(TestFixtures.otherUser))
+    XCTAssertEqual(controller.profile?.id, TestFixtures.otherID)
+    // The superseded verification never reached a profile read for the account it resolved.
+    XCTAssertEqual(profiles.recordedLoadedUserIDs, [TestFixtures.otherID])
+  }
+
+  /// Row Level Security should make this impossible, but a profile that does not belong to the
+  /// authenticated caller must be refused rather than displayed.
+  func testAProfileForAnotherAccountIsRefused() async throws {
+    let authentication = FakeAuthenticationService()
+    let profiles = FakeProfileService(profile: TestFixtures.otherProfile())
+    let controller = makeController(authentication: authentication, profiles: profiles)
+
+    controller.start()
+    authentication.emit(.restored(TestFixtures.user))
+
+    try await waitUntil("the refused profile") { controller.phase == .signedOut }
+    XCTAssertNil(controller.profile)
+  }
+
+  func testAProfileChangeForAnotherAccountIsIgnored() async throws {
+    let authentication = FakeAuthenticationService()
+    let profiles = FakeProfileService(profile: TestFixtures.profile())
+    let controller = makeController(authentication: authentication, profiles: profiles)
+
+    controller.start()
+    authentication.emit(.restored(TestFixtures.user))
+    try await waitUntil("the restored session") {
+      controller.phase == .authenticated(TestFixtures.user)
+    }
+
+    controller.profileDidChange(TestFixtures.otherProfile(onboardingCompleted: false))
+
+    XCTAssertEqual(controller.profile?.id, TestFixtures.ownerID)
+    XCTAssertEqual(controller.phase, .authenticated(TestFixtures.user))
   }
 
   // MARK: - Profile completion
