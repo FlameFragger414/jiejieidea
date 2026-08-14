@@ -88,6 +88,54 @@ final class AuthenticationStateMachineTests: XCTestCase {
     XCTAssertEqual(machine.phase, .signedOut)
   }
 
+  func testRefreshDuringRestorationCannotCreateASession() {
+    var machine = AuthenticationStateMachine()
+    machine.apply(.sessionRefreshed(mia))
+    XCTAssertEqual(machine.phase, .restoringSession)
+
+    var authenticating = AuthenticationStateMachine(phase: .authenticating)
+    authenticating.apply(.sessionRefreshed(mia))
+    XCTAssertEqual(authenticating.phase, .authenticating)
+  }
+
+  /// A refresh that reports a different account must not promote that account into the phase the
+  /// previous person reached, because the new profile has not been read yet.
+  func testRefreshForADifferentAccountReturnsToRestoration() {
+    var authenticated = AuthenticationStateMachine(phase: .authenticated(mia))
+    authenticated.apply(.sessionRefreshed(leo))
+    XCTAssertEqual(authenticated.phase, .restoringSession)
+
+    var onboarding = AuthenticationStateMachine(phase: .onboardingRequired(mia))
+    onboarding.apply(.sessionRefreshed(leo))
+    XCTAssertEqual(onboarding.phase, .restoringSession)
+
+    var unverified = AuthenticationStateMachine(
+      phase: .unverified(user: mia, problem: .offline)
+    )
+    unverified.apply(.sessionRefreshed(leo))
+    XCTAssertEqual(unverified.phase, .restoringSession)
+  }
+
+  func testARefreshedIdentityIsFollowedByItsOwnProfileRead() {
+    var machine = AuthenticationStateMachine(phase: .authenticated(mia))
+    machine.apply(.sessionRefreshed(leo))
+    machine.apply(.sessionAvailable(leo, onboardingCompleted: false))
+    XCTAssertEqual(machine.phase, .onboardingRequired(leo))
+  }
+
+  /// Events can settle in any order. Whatever the order, a signed-out shell stays signed out until
+  /// a session is reported again.
+  func testOutOfOrderEventsAfterSignOutNeverAuthenticate() {
+    var machine = AuthenticationStateMachine(phase: .authenticated(mia))
+    machine.apply(.signedOut)
+    machine.apply(.sessionRefreshed(mia))
+    machine.apply(.profileUnavailable(mia, .offline))
+    machine.apply(.onboardingCompletionChanged(true))
+    machine.apply(.verificationUnavailable(.offline))
+    machine.apply(.sessionRefreshed(leo))
+    XCTAssertEqual(machine.phase, .signedOut)
+  }
+
   func testExpiredSessionReturnsToSignedOut() {
     var machine = AuthenticationStateMachine(phase: .authenticated(mia))
     machine.apply(.sessionExpired)
@@ -131,6 +179,13 @@ final class AuthenticationStateMachineTests: XCTestCase {
     var machine = AuthenticationStateMachine(phase: .authenticated(mia))
     machine.apply(.profileUnavailable(mia, .serviceUnavailable))
     XCTAssertEqual(machine.phase, .authenticated(mia))
+  }
+
+  func testAProfileReadThatFailsAfterSignOutStaysSignedOut() {
+    var machine = AuthenticationStateMachine(phase: .signedOut)
+    machine.apply(.profileUnavailable(mia, .offline))
+    XCTAssertEqual(machine.phase, .signedOut)
+    XCTAssertNil(machine.phase.user)
   }
 
   func testConnectivityProblemNeverDowngradesAnEstablishedPhase() {

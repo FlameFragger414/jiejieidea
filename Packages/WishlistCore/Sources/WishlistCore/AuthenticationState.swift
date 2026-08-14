@@ -74,7 +74,7 @@ public enum AuthenticationEvent: Equatable, Sendable {
   case signInFailed(AuthenticationFailure)
   /// A session became available, either restored at launch or created by a sign-in.
   case sessionAvailable(AuthenticatedUser, onboardingCompleted: Bool)
-  /// The stored session was refreshed; the identity may have been re-read.
+  /// The stored session was refreshed; the identity may have changed.
   case sessionRefreshed(AuthenticatedUser)
   /// The profile record changed, typically when onboarding completed.
   case onboardingCompletionChanged(Bool)
@@ -124,16 +124,26 @@ public struct AuthenticationStateMachine: Equatable, Sendable {
       phase = onboardingCompleted ? .authenticated(user) : .onboardingRequired(user)
 
     case .sessionRefreshed(let user):
+      guard let established = phase.user else {
+        // Without an established identity there is nothing to refresh. A refresh that arrives
+        // after a sign-out, or before restoration reports a session, must never create one.
+        break
+      }
+      guard established.id == user.id else {
+        // The refresh carries a different account. Its onboarding phase has not been read, and the
+        // profile on screen still belongs to the previous person, so neither may be reused.
+        phase = .restoringSession
+        break
+      }
       switch phase {
       case .authenticated:
         phase = .authenticated(user)
       case .onboardingRequired:
         phase = .onboardingRequired(user)
-      case .unverified(let previous, let problem) where previous?.id == user.id:
+      case .unverified(_, let problem):
         // The identity is known but the profile still has not been read, so the phase is unchanged.
         phase = .unverified(user: user, problem: problem)
-      case .restoringSession, .signedOut, .authenticating, .unverified:
-        // A refresh for an unknown user is ignored; restoration reports the authoritative phase.
+      case .restoringSession, .signedOut, .authenticating:
         break
       }
 
@@ -151,7 +161,10 @@ public struct AuthenticationStateMachine: Equatable, Sendable {
       case .authenticated, .onboardingRequired:
         // The last known onboarding phase is more useful than an unverified screen.
         break
-      case .restoringSession, .signedOut, .authenticating, .unverified:
+      case .signedOut:
+        // A profile read that lands after a sign-out must not put an identity back on screen.
+        break
+      case .restoringSession, .authenticating, .unverified:
         phase = .unverified(user: user, problem: problem)
       }
 
