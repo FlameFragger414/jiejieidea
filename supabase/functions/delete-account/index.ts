@@ -21,7 +21,6 @@ import {
   rejection,
   type RejectionResponse,
   removeOwnedProfileImages,
-  type StorageListEntry,
 } from "./deletion.ts";
 
 const PROFILE_IMAGE_BUCKET = "profile-images";
@@ -96,12 +95,12 @@ Deno.serve(async (request: Request) => {
 
   // Storage objects have no cascading foreign key to auth.users, so they are removed explicitly
   // before the user row disappears and the folder becomes unattributable.
+  // Storage's own type declares a listed object's `id` as non-optional, but the API reports `null`
+  // for a folder placeholder. `StorageListEntry` describes what actually arrives, which is what
+  // lets the cleanup tell an object apart from a folder.
   const bucket = adminClient.storage.from(PROFILE_IMAGE_BUCKET);
   const storage: ProfileImageStorage = {
-    list: (prefix, options) =>
-      bucket.list(prefix, options) as Promise<
-        { data: StorageListEntry[] | null; error: unknown }
-      >,
+    list: (prefix, options) => bucket.list(prefix, options),
     remove: (paths) => bucket.remove(paths),
   };
 
