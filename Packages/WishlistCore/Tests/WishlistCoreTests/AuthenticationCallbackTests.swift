@@ -181,7 +181,10 @@ final class AuthenticationCallbackTests: XCTestCase {
         )
       case .providerFailure(let code):
         if let code {
-          XCTAssertTrue((1...64).contains(code.count), "accepted an implausible error from \(noise)")
+          XCTAssertTrue(
+            (1...64).contains(code.count),
+            "accepted an implausible error code from \(noise)"
+          )
         }
       case nil:
         break
